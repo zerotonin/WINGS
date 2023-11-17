@@ -1,4 +1,4 @@
-# Wolbachia Simulation
+# W.I.N.G.S. - Wolbachia Infection Numerical Growth Simulation.
 
 ## Project Overview
 This project simulates the population dynamics of beetles affected by the Wolbachia bacterium. Wolbachia influences beetle reproduction and survival through mechanisms like Cytoplasmic Incompatibility (CI), Male Killing, Increased Exploration Rate, and Increased Egg Laying. Our model uses a Monte Carlo approach to explore various scenarios of Wolbachia's effects on beetle populations.
@@ -13,8 +13,8 @@ This project simulates the population dynamics of beetles affected by the Wolbac
 To set up the simulation environment, clone this repository and install the required dependencies.
 
 ```bash
-git clone https://github.com/your-github-username/wolbachia-simulation.git
-cd wolbachia-simulation
+git clone https://github.com/zerotonin/WINGS.git
+cd WINGS
 pip install -r requirements.txt
 ```
 ## Usage
