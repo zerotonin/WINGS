@@ -45,4 +45,4 @@ For questions or feedback, please contact Bart Geurten.
 - **Additional Details:**  This model is part of scientific publication **ADD LINK**. Please cite: **ADD CITATION HERE**
 
 
-![WINGS Project Icon](/path/to/your/image.png)
+![WINGS Project Icon](images/wingsLogo.png)
