@@ -41,8 +41,7 @@ For questions or feedback, please contact Bart Geurten.
 
 ### Notes
 
-- **GitHub URL:**
+- **GitHub URL:** https://github.com/zerotonin/WINGS
 - **Additional Details:**  This model is part of scientific publication **ADD LINK**. Please cite: **ADD CITATION HERE**
-- **Contributing and Code of Conduct:** If you plan to accept contributions, you might want to create `CONTRIBUTING.md` and `CODE_OF_CONDUCT.md` files and link to them.
-- **Contact Information:** Replace `[Bart Geurten](bart.geurten@gmail.de)` with your actual contact information.
+
 
