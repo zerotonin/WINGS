@@ -1,6 +1,7 @@
 from Environment import Environment
 import matplotlib.pyplot as plt
 from tqdm import tqdm
+
 # Simulation parameters
 grid_size = 500  # Adjust as needed
 initial_population = 100  # Adjust as needed

@@ -133,6 +133,9 @@ class Environment:
         """
         Removes beetles from the population that have exceeded their maximum life expectancy.
         """
+        # "All those moments will be lost in time, like tears in rain." 
+        #                        – Roy Batty, portrayed by Rutger Hauer
+        
         self.population = [beetle for beetle in self.population if beetle.age <= beetle.max_life_expectancy]
         
 
