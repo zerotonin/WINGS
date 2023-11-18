@@ -44,8 +44,8 @@ class Beetle:
         Returns:
             float: The generated life expectancy of the beetle in hours.
         """
-        mu = 9 * 30 * 24  # Mean: 9 months in hours
-        sigma = 6 * 30 * 24  # Standard deviation: ~15 days in hours
+        mu = 12 * 30 * 24  # Mean: 12 months in hours
+        sigma = 3 * 30 * 24  # Standard deviation: ~15 days in hours
         life_expectancy = np.random.normal(mu, sigma)
         return max(0, min(life_expectancy, 13 * 30 * 24))
 
