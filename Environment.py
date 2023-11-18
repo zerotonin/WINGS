@@ -31,7 +31,7 @@ class Environment:
         max_eggs (int): The maximum number of eggs allowed in the environment.
     """
 
-    def __init__(self, size, initial_population, wolbachia_effects, infected_fraction=0.1,max_population=250, max_eggs=100):
+    def __init__(self, size, initial_population, wolbachia_effects, infected_fraction=0.1,max_population=100, max_eggs=50):
         self.grid_size = size
         self.population = []
         self.wolbachia_effects = wolbachia_effects
@@ -44,6 +44,7 @@ class Environment:
         self.sim_time = 0
         self.eggs = list()
         self.max_eggs = max_eggs
+        self.mating_distance = 5.0 
 
     def initialize_population(self, initial_population):
         """
@@ -182,7 +183,8 @@ class Environment:
             bool: True if the beetles are within mating distance, False otherwise.
         """
         distance = np.linalg.norm(np.array(female.position) - np.array(male.position))
-        mating_distance = 1.0  # Default mating distance
+         # Default mating distance
         if female.infected:
-            mating_distance *= 1.33  # Increase distance if either beetle is infected
-        return distance <= mating_distance
+            return distance <= self.mating_distance * 1.4  # Increase distance if either beetle is infected
+        else:
+            return distance <= self.mating_distance

@@ -8,10 +8,10 @@ import numpy as np
 
 # Constants for the simulation
 GRID_SIZE = 500
-INITIAL_POPULATION = 100
+INITIAL_POPULATION = 20
 INFECTED_FRACTION = 0.2
 MAX_TIME = 8760 # hours to simulate, 8760 is a year
-SAVE_PATH = "/path/to/save/files"  # Update with your desired path
+SAVE_PATH = "/home/bgeurten/wolbachia_spread_model/raw_data/compare_spread_features/"  # Update with your desired path
 PARALLEL_THREADS = 20 #Number of parallel simulations
 
 
