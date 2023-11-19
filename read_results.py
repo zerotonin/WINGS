@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 # Constants
 SAVE_PATH = "/home/bgeurten/wolbachia_spread_model/raw_data/compare_spread_features/"  # Update with your actual save path
 GRID_SIZE = 500
-INITIAL_POPULATION = 100
+INITIAL_POPULATION = 10
 INFECTED_FRACTION = 0.2
 
 def extract_metadata_from_filename(filename):
@@ -101,6 +101,7 @@ def generate_id_string(row):
 # Read and process the data
 combined_data = read_and_process_data()
 combined_data['id_string'] = combined_data.apply(generate_id_string, axis=1)
+combined_data.to_csv('wolbachia_data.csv',index=False)
 # Example: Display the first few rows of the combined DataFrame
 print(combined_data.head())
 plot_time_series(combined_data)
