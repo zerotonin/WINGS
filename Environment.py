@@ -31,7 +31,7 @@ class Environment:
         max_eggs (int): The maximum number of eggs allowed in the environment.
     """
 
-    def __init__(self, size, initial_population, wolbachia_effects, infected_fraction=0.1,max_population=50, max_eggs=100,male_to_female_ratio =0.5):
+    def __init__(self, size, initial_population, wolbachia_effects, infected_fraction=0.1,max_population=50, max_eggs=40,male_to_female_ratio =0.5):
         self.grid_size = size
         self.population = []
         self.wolbachia_effects = wolbachia_effects
