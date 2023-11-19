@@ -147,7 +147,7 @@ class Environment:
         # Calculate the number of items to remove, with some random fluctuation
         excess = len(target_list) - max_size
         if excess > 0:
-            items_to_remove = excess + random.randint(-10, 10)
+            items_to_remove = excess  #+ random.randint(-2, 2) more deterministic
             items_to_remove = max(0, min(items_to_remove, len(target_list)))  # Ensure valid range
 
             # Randomly remove the calculated number of items
