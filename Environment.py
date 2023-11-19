@@ -184,7 +184,7 @@ class Environment:
         """
         distance = np.linalg.norm(np.array(female.position) - np.array(male.position))
          # Default mating distance
-        if female.infected:
+        if female.infected and self.wolbachia_effects['increased_exploration_rate']:
             return distance <= self.mating_distance * 1.4  # Increase distance if either beetle is infected
         else:
             return distance <= self.mating_distance
