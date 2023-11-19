@@ -50,10 +50,19 @@ def read_and_process_data():
         metadata = extract_metadata_from_filename(file)
         data['days'] = data.index
         data = data.assign(**metadata)
-        data['grid_size'] = GRID_SIZE
-        data['initial_population'] = INITIAL_POPULATION
-        data['infected_fraction'] = INFECTED_FRACTION
+        #data['grid_size'] = GRID_SIZE
+        #data['initial_population'] = INITIAL_POPULATION
+        #data['infected_fraction'] = INFECTED_FRACTION
+                # Ensure data covers 365 days
+        if len(data) < 365:
+            last_row = data.iloc[-1]
+            missing_days = 365 - len(data)
+            repeat_rows = pd.DataFrame([last_row] * missing_days)
+            repeat_rows['days'] = range(len(data), 365)  # Update days for repeated rows
+            data = pd.concat([data, repeat_rows], ignore_index=True)
+
         all_data.append(data)
+
 
     return pd.concat(all_data, ignore_index=True)
 
@@ -104,4 +113,3 @@ combined_data['id_string'] = combined_data.apply(generate_id_string, axis=1)
 combined_data.to_csv('wolbachia_data.csv',index=False)
 # Example: Display the first few rows of the combined DataFrame
 print(combined_data.head())
-plot_time_series(combined_data)

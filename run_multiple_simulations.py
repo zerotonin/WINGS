@@ -28,8 +28,8 @@ def run_simulation(args):
 
     for hour in range(MAX_TIME):  # Simulation runs for one year or until all beetles are infected
         env.run_simulation_step()
-        if env.infected_fraction >= 1.0:
-            break
+        #if env.infected_fraction >= 1.0:
+        #    break
 
     # Process and save data to daily median values
     save_simulation_results(env, wolbachia_effects, trial_number)
@@ -54,7 +54,7 @@ def main():
     Main function to run multiple simulations across various Wolbachia effect combinations.
     """
     all_combinations = list(itertools.product([True, False], repeat=4))
-    trials = list(range(300))
+    trials = list(range(500))
     jobs = [(dict(zip(['cytoplasmic_incompatibility', 'male_killing', 'increased_exploration_rate', 'increased_eggs'], combo)), trial) for combo in all_combinations for trial in trials]
 
     # Run simulations in parallel using multiprocessing
