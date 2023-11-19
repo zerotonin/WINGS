@@ -69,8 +69,7 @@ class Beetle:
 
         Movement occurs only if the beetle has hatched (age is at least one month).
         """
-        if self.age >= 31 * 24:  # Hatches after one month
-            self.levy_flight_step()
+        self.levy_flight_step()
 
     def update_last_mating_time(self, current_time):
         """
