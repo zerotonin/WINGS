@@ -81,6 +81,7 @@ save_path = './figures'  # Update this to your save path
 data_path = 'wolbachia_stats.csv'  # Path to your statistics CSV file
 
 combinations_to_plot = [['er', 'ci', 'mk', 'eg', 'no_effects'],
+                        ['cimkereg','cimkeg', 'mkeg', 'mk', 'no_effects'],
                         ['er', 'ci', 'cier', 'no_effects'],
                         ['er', 'mk', 'mker', 'no_effects'],
                         ['er', 'eg', 'ereg', 'no_effects']
