@@ -24,7 +24,7 @@ class Beetle:
         mating_cooldown (int, optional): The mating cooldown period in hours. Defaults to 240.
     """
 
-    def __init__(self, position, infected, sex, environment, age=0, mating_cooldown=240):
+    def __init__(self, position, infected, sex, environment, age=0, mating_cooldown=48):
         self.position = position
         self.infected = infected
         self.sex = sex
@@ -44,10 +44,7 @@ class Beetle:
         Returns:
             float: The generated life expectancy of the beetle in hours.
         """
-        mu = 12 * 30 * 24  # Mean: 12 months in hours
-        sigma = 3 * 30 * 24  # Standard deviation: ~15 days in hours
-        life_expectancy = np.random.normal(mu, sigma)
-        return max(0, min(life_expectancy, 13 * 30 * 24))
+        return np.random.randint(280*24, 450*24) 
 
     def levy_flight_step(self):
         """
