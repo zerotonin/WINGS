@@ -90,7 +90,7 @@ class Environment:
         #Age and Hatch eggs
         for egg in self.eggs:
             egg.age +=1
-            if egg.age> 744:
+            if egg.age> 744 + 144: # 744 hours till hatching plus 144 hours till sexual development
                 self.population.append(egg)
                 self.eggs.remove(egg)
         
@@ -158,8 +158,8 @@ class Environment:
         Mating is considered based on proximity, age, sex, and mating cooldown. Successful mating results in the production of offspring.
         """
         current_time = self.sim_time
-        for female in filter(lambda b: b.sex == 'female' and b.age >= 888 and b.can_mate(current_time), self.population): # 744 hours till hatching plus 144 hours till sexual development
-            for male in filter(lambda b: b.sex == 'male' and b.age >= 888 and b.can_mate(current_time), self.population):
+        for female in filter(lambda b: b.sex == 'female' and  b.can_mate(current_time), self.population): 
+            for male in filter(lambda b: b.sex == 'male' and  b.can_mate(current_time), self.population):
                 if self.is_within_mating_distance(female, male):
                     female.update_last_mating_time(current_time)
                     male.update_last_mating_time(current_time)
