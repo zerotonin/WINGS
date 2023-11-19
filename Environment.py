@@ -65,9 +65,14 @@ class Environment:
             position = self.generate_position_in_central_third()
             age = np.random.randint(889,2500)
 
-            if infected_count < self.initial_infected_count:
+            if infected_count <= np.round(self.initial_infected_count/2):
                 # Initialize infected females
                 sex = 'female'
+                infected = True
+                infected_count += 1
+            elif infected_count > np.round(self.initial_infected_count/2) and infected_count > np.round(self.initial_infected_count):
+                # Initialize infected males, if there are no infected males CI does not work!
+                sex = 'male'
                 infected = True
                 infected_count += 1
             else:
