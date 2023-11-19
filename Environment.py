@@ -31,7 +31,7 @@ class Environment:
         max_eggs (int): The maximum number of eggs allowed in the environment.
     """
 
-    def __init__(self, size, initial_population, wolbachia_effects, infected_fraction=0.1,max_population=100, max_eggs=50):
+    def __init__(self, size, initial_population, wolbachia_effects, infected_fraction=0.1,max_population=100, max_eggs=100):
         self.grid_size = size
         self.population = []
         self.wolbachia_effects = wolbachia_effects
@@ -58,8 +58,8 @@ class Environment:
         for _ in range(initial_population):
             position = self.generate_position_in_central_third()
             infected = random.random() < self.infected_fraction
-            sex = 'male' if random.random() < 0.5 else 'female'
-            age = 889 #random.randint(888, 2000)  # Age in hours
+            sex = 'male' if random.random() < 0.5 else 'female'        
+            age= np.random.randint(889,2500)
             beetle = Beetle(position, infected, sex, self, age)
             self.population.append(beetle)
 
@@ -90,7 +90,7 @@ class Environment:
         #Age and Hatch eggs
         for egg in self.eggs:
             egg.age +=1
-            if egg.age> 744 + 144: # 744 hours till hatching plus 144 hours till sexual development
+            if egg.age> 552: # 23days * 24 hours = 552 for a mature beetle doi: 10.1186/s13227-022-00201-9
                 self.population.append(egg)
                 self.eggs.remove(egg)
         
@@ -146,8 +146,11 @@ class Environment:
 
         Calculates the current fraction of infected beetles and appends this data to the infection history.
         """
-        infected_count = sum(beetle.infected for beetle in self.population)
-        self.infected_fraction = infected_count/len(self.population)
+        if self.population == 0:
+            self.infected_fraction = -1
+        else:
+            infected_count = sum(beetle.infected for beetle in self.population)
+            self.infected_fraction = infected_count/len(self.population)
         self.infection_history.append(self.infected_fraction)
 
 
