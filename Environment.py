@@ -31,13 +31,15 @@ class Environment:
         max_eggs (int): The maximum number of eggs allowed in the environment.
     """
 
-    def __init__(self, size, initial_population, wolbachia_effects, infected_fraction=0.1,max_population=100, max_eggs=100):
+    def __init__(self, size, initial_population, wolbachia_effects, infected_fraction=0.1,max_population=100, max_eggs=100,male_to_female_ratio =0.5):
         self.grid_size = size
         self.population = []
         self.wolbachia_effects = wolbachia_effects
         self.infected_fraction = infected_fraction
         self.infection_history = [self.infected_fraction]
         self.population_size = [initial_population]
+        self.initial_infected_count = int(np.round(initial_population*infected_fraction))
+        self.male_to_female_ratio = male_to_female_ratio
         self.initialize_population(initial_population)
         self.reproduction_system = Reproduction(self)
         self.max_population = max_population
@@ -55,11 +57,29 @@ class Environment:
         Parameters:
             initial_population (int): The number of beetles to initialize in the population.
         """
+        infected_count = 0
+        male_count = 0
+        female_count = 0
+
         for _ in range(initial_population):
             position = self.generate_position_in_central_third()
-            infected = random.random() < self.infected_fraction
-            sex = 'male' if random.random() < 0.5 else 'female'        
-            age= np.random.randint(889,2500)
+            age = np.random.randint(889,2500)
+
+            if infected_count < self.initial_infected_count:
+                # Initialize infected females
+                sex = 'female'
+                infected = True
+                infected_count += 1
+            else:
+                # Initialize the rest of the population with a specific male-to-female ratio
+                if male_count / max(female_count, 1) < self.male_to_female_ratio:
+                    sex = 'male'
+                    male_count += 1
+                else:
+                    sex = 'female'
+                    female_count += 1
+                infected = False
+
             beetle = Beetle(position, infected, sex, self, age)
             self.population.append(beetle)
 
