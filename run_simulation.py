@@ -4,8 +4,8 @@ from tqdm import tqdm
 
 # Simulation parameters
 grid_size = 500  # Adjust as needed
-initial_population = 50 # Adjust as needed
-wolbachia_effects = {'cytoplasmic_incompatibility': True, 'male_killing': True, 'increased_exploration_rate': True,'increased_eggs':True}
+initial_population = 10 # Adjust as needed
+wolbachia_effects = {'cytoplasmic_incompatibility': False, 'male_killing': False, 'increased_exploration_rate': True,'increased_eggs':False}
 infected_fraction = 0.2  # 10% initially infected
 
 # Create the environment
