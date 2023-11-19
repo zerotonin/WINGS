@@ -38,10 +38,7 @@ class Reproduction:
 
         Returns:
             list: A list of offspring (Beetle objects), empty if mating is unsuccessful.
-        """
-        if female.age < 888 or male.age < 888:
-            return []  # Both beetles must be older than 888 hours (37 days) to mate
-        
+        """        
         if female.sex != 'female' or male.sex != 'male':
             return []  # Ensure correct sex pairing
         

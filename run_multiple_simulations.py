@@ -46,7 +46,7 @@ def save_simulation_results(env, wolbachia_effects, trial_number):
     daily_population_size = [np.median(env.population_size[i:i+24]) for i in range(0, len(env.population_size), 24)]
     daily_infection_rate = [np.median(env.infection_history[i:i+24]) for i in range(0, len(env.infection_history), 24)]
 
-    filename = os.path.join(SAVE_PATH, f"{'_'.join([k+'_'+str(v) for k,v in wolbachia_effects.items()])}_{trial_number:02d}.csv")
+    filename = os.path.join(SAVE_PATH, f"{'_'.join([k+'_'+str(v) for k,v in wolbachia_effects.items()])}_{trial_number:03d}.csv")
     pd.DataFrame({'Population Size': daily_population_size, 'Infection Rate': daily_infection_rate}).to_csv(filename, index=False)
 
 def main():
@@ -54,7 +54,7 @@ def main():
     Main function to run multiple simulations across various Wolbachia effect combinations.
     """
     all_combinations = list(itertools.product([True, False], repeat=4))
-    trials = list(range(100))
+    trials = list(range(300))
     jobs = [(dict(zip(['cytoplasmic_incompatibility', 'male_killing', 'increased_exploration_rate', 'increased_eggs'], combo)), trial) for combo in all_combinations for trial in trials]
 
     # Run simulations in parallel using multiprocessing
