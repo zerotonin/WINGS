@@ -1,86 +1,165 @@
 import pandas as pd
 import numpy as np
-from glob import glob
+import glob, os
+from tqdm import tqdm
 
-# Directory containing CSV files
-data_dir = "/home/geuba03p/PyProjects/WINGS/data/compare_spread_features/"
-file_pattern = data_dir + "*.csv"
+def parse_filename(filename):
+    """
+    Parse simulation parameters from the CSV filename.
+    Returns a dict of parameters:
+      - cytoplasmic_incompatibility (bool)
+      - ci_strength (float or NaN if CI is False)
+      - male_killing (bool)
+      - increased_exploration_rate (bool)
+      - increased_eggs (bool)
+      - reduced_eggs (bool)
+      - replicate_id (int)
+    """
+    base = os.path.splitext(os.path.basename(filename))[0]
+    # Regex pattern matching the expected filename format
+    import re
+    pattern = re.compile(
+        r'cytoplasmic_incompatibility_(True|False)_'
+        r'ci_strength_([0-9]*\.?[0-9]+)_'
+        r'male_killing_(True|False)_'
+        r'increased_exploration_rate_(True|False)_'
+        r'increased_eggs_(True|False)_'
+        r'reduced_eggs_(True|False)_'
+        r'(\d+)$'  # replicate ID at the end
+    )
+    match = pattern.match(base)
+    if not match:
+        raise ValueError(f"Filename '{filename}' does not match expected pattern.")
+    ci_str, ci_strength_str, mk_str, ie_str, inc_eggs_str, red_eggs_str, rep_str = match.groups()
+    params = {
+        'cytoplasmic_incompatibility': True if ci_str == 'True' else False,
+        'ci_strength': float(ci_strength_str),
+        'male_killing': True if mk_str == 'True' else False,
+        'increased_exploration_rate': True if ie_str == 'True' else False,
+        'increased_eggs': True if inc_eggs_str == 'True' else False,
+        'reduced_eggs': True if red_eggs_str == 'True' else False,
+        'replicate_id': int(rep_str)
+    }
+    # If CI is False, ci_strength is not applicable
+    if not params['cytoplasmic_incompatibility']:
+        params['ci_strength'] = np.nan
+    return params
 
-# 1. Load all CSV files efficiently
-file_list = glob(file_pattern)
-data_frames = []
-for file in file_list:
-    # Read CSV with specified dtypes to save memory&#8203;:contentReference[oaicite:6]{index=6}
-    df = pd.read_csv(file, dtype={
-        "Population Size": "float32",
-        "Infection Rate": "float32"
-    })
-    # Add a 'Day' column (1-indexed day assuming each row is a day)
-    df.insert(0, "Day", np.arange(1, len(df) + 1, dtype=np.int32))
-    data_frames.append(df)
-
-# Combine all data into one DataFrame
-combined_df = pd.concat(data_frames, ignore_index=True)
-# (Optional) Free up memory by deleting the list of smaller DataFrames
-del data_frames
-
-# 2. Compute daily summary statistics (mean, median, std)
-daily_stats = combined_df.groupby("Day").agg({
-    "Infection Rate": ["mean", "median", "std"],
-    "Population Size": ["mean", "median", "std"]
-})
-# Flatten multi-level columns for convenience
-daily_stats.columns = ["_".join(col) for col in daily_stats.columns]
-daily_stats = daily_stats.reset_index()  # make 'Day' a column instead of index
-
-# Function to bootstrap 95% CI for the mean of a given array
-def bootstrap_ci(data_array, n_bootstrap=1000, ci=0.95):
-    """Return the (lower, upper) CI bounds for the mean using bootstrapping."""
-    # Generate bootstrap samples and compute their means&#8203;:contentReference[oaicite:7]{index=7}
-    means = []
-    n = len(data_array)
+def bootstrap_ci(data, n_bootstrap=1000, ci=0.95):
+    """
+    Compute a bootstrap confidence interval for the median of a 1D numpy array.
+    Returns a tuple (lower_bound, upper_bound) for the given confidence level.
+    """
+    data = np.asarray(data)
+    boot_medians = []
+    # Perform bootstrap resampling
     for _ in range(n_bootstrap):
-        sample = np.random.choice(data_array, size=n, replace=True)
-        means.append(sample.mean())
-    # Calculate percentile bounds for the two-tailed CI&#8203;:contentReference[oaicite:8]{index=8}
-    lower_bound = np.percentile(means, (1-ci)/2 * 100)   # e.g., 2.5th percentile
-    upper_bound = np.percentile(means, (1-(1-ci)/2) * 100)  # e.g., 97.5th percentile
+        sample = np.random.choice(data, size=data.size, replace=True)
+        boot_medians.append(np.median(sample))
+    # Compute confidence interval bounds
+    lower_bound = np.percentile(boot_medians, (1 - ci) / 2 * 100)
+    upper_bound = np.percentile(boot_medians, (1 + ci) / 2 * 100)
     return lower_bound, upper_bound
 
-# Prepare lists to collect CI results
-ci_days = []
-ci_inf_lower = []
-ci_inf_upper = []
-ci_pop_lower = []
-ci_pop_upper = []
+def calculate_statistics(data):
+    """
+    Calculate mean, median, standard deviation, and 95% CI for the median for the given data.
+    """
+    arr = np.asarray(data)
+    stats_dict = {
+        'mean': np.mean(arr),
+        'median': np.median(arr),
+        'std': np.std(arr, ddof=1) if arr.size > 1 else 0.0  # sample std; 0.0 if only one value
+    }
+    # 95% CI for the median via bootstrap
+    ci_lower, ci_upper = bootstrap_ci(arr, n_bootstrap=1000, ci=0.95)
+    stats_dict['median_ci_lower'] = ci_lower
+    stats_dict['median_ci_upper'] = ci_upper
+    return stats_dict
 
-# Compute bootstrapped CI for each day group
-for day, group in combined_df.groupby("Day"):
-    inf_rate_values = group["Infection Rate"].values
-    pop_size_values = group["Population Size"].values
-    # Bootstrap CIs for infection rate and population size
-    inf_ci_lo, inf_ci_hi = bootstrap_ci(inf_rate_values, n_bootstrap=1000, ci=0.95)
-    pop_ci_lo, pop_ci_hi = bootstrap_ci(pop_size_values, n_bootstrap=1000, ci=0.95)
-    ci_days.append(day)
-    ci_inf_lower.append(inf_ci_lo)
-    ci_inf_upper.append(inf_ci_hi)
-    ci_pop_lower.append(pop_ci_lo)
-    ci_pop_upper.append(pop_ci_hi)
+def main(input_dir, combined_output_file, stats_output_file):
+    """
+    Read all simulation CSV files from input_dir, combine data with parameter labels,
+    compute daily summary stats per parameter combination, and save results.
+    """
+    # Get all CSV files matching the simulation filename pattern in the directory
+    pattern = os.path.join(input_dir, "cytoplasmic_incompatibility_*_ci_strength_*_*.csv")
+    file_list = glob.glob(pattern)
+    if not file_list:
+        raise FileNotFoundError(f"No CSV files found in directory '{input_dir}' matching the simulation output pattern.")
+    
+    combined_data = []  # will collect data from each file
+    for file_path in tqdm(file_list, desc="Reading simulation outputs"):
+        params = parse_filename(file_path)
+        # Read the CSV data for this replicate
+        df_run = pd.read_csv(file_path)
+        # Add a Day column if not already present (assuming each row is sequential day data)
+        if 'Day' not in df_run.columns and 'days' not in df_run.columns:
+            df_run.insert(0, 'Day', range(1, len(df_run) + 1))
+        # Attach parameter values to each row
+        for key, value in params.items():
+            df_run[key] = value
+        # Ensure boolean columns are actual bool dtype for memory efficiency
+        df_run['cytoplasmic_incompatibility'] = df_run['cytoplasmic_incompatibility'].astype(bool)
+        df_run['male_killing'] = df_run['male_killing'].astype(bool)
+        df_run['increased_exploration_rate'] = df_run['increased_exploration_rate'].astype(bool)
+        df_run['increased_eggs'] = df_run['increased_eggs'].astype(bool)
+        df_run['reduced_eggs'] = df_run['reduced_eggs'].astype(bool)
+        combined_data.append(df_run)
+    # Combine all runs into a single DataFrame
+    combined_df = pd.concat(combined_data, ignore_index=True)
+    # Reorder columns for clarity
+    cols_order = [
+        'cytoplasmic_incompatibility', 'ci_strength', 'male_killing',
+        'increased_exploration_rate', 'increased_eggs', 'reduced_eggs',
+        'replicate_id', 'Day', 'Population Size', 'Infection Rate'
+    ]
+    combined_df = combined_df[cols_order]
+    # Save the full combined dataset (for boxplots or further analysis)
+    combined_df.to_csv(combined_output_file, index=False)
+    
+    # Prepare to compute daily stats per parameter combination
+    group_cols = [
+        'cytoplasmic_incompatibility', 'ci_strength', 'male_killing',
+        'increased_exploration_rate', 'increased_eggs', 'reduced_eggs', 'Day'
+    ]
+    stats_records = []  # will collect stats for each combo per day
+    grouped = combined_df.groupby(group_cols, dropna=False)
+    # Iterate over each group (unique parameter combination + day)
+    for group_vals, group_df in tqdm(grouped, total=grouped.ngroups, desc="Computing daily statistics"):
+        # Unpack grouping values (parameters and day)
+        (ci_val, ci_strength_val, mk_val, ie_val, inc_eggs_val, red_eggs_val, day_val) = group_vals
+        # Compute stats for this group across replicates
+        pop_stats = calculate_statistics(group_df['Population Size'])
+        inf_stats = calculate_statistics(group_df['Infection Rate'])
+        stats_records.append({
+            'cytoplasmic_incompatibility': ci_val,
+            'ci_strength': ci_strength_val,
+            'male_killing': mk_val,
+            'increased_exploration_rate': ie_val,
+            'increased_eggs': inc_eggs_val,
+            'reduced_eggs': red_eggs_val,
+            'Day': day_val,
+            'pop_size_mean': pop_stats['mean'],
+            'pop_size_median': pop_stats['median'],
+            'pop_size_std': pop_stats['std'],
+            'pop_size_ci_lower': pop_stats['median_ci_lower'],
+            'pop_size_ci_upper': pop_stats['median_ci_upper'],
+            'infection_rate_mean': inf_stats['mean'],
+            'infection_rate_median': inf_stats['median'],
+            'infection_rate_std': inf_stats['std'],
+            'infection_rate_ci_lower': inf_stats['median_ci_lower'],
+            'infection_rate_ci_upper': inf_stats['median_ci_upper']
+        })
+    # Create DataFrame of aggregated statistics and save to CSV
+    stats_df = pd.DataFrame(stats_records)
+    stats_df.to_csv(stats_output_file, index=False)
+    print(f"Combined data saved to {combined_output_file}")
+    print(f"Daily statistics saved to {stats_output_file}")
 
-# Create a DataFrame for confidence intervals
-ci_df = pd.DataFrame({
-    "Day": ci_days,
-    "InfectionRate_CI_lower": ci_inf_lower,
-    "InfectionRate_CI_upper": ci_inf_upper,
-    "PopulationSize_CI_lower": ci_pop_lower,
-    "PopulationSize_CI_upper": ci_pop_upper
-})
-
-# Merge CI bounds with the daily_stats DataFrame
-daily_summary_df = pd.merge(daily_stats, ci_df, on="Day")
-
-# 3. Save the combined dataset and daily summary statistics
-combined_df.to_csv("combined_dataset.csv", index=False)
-daily_summary_df.to_csv("daily_summary_stats.csv", index=False)
-
-# (The CSV files can later be loaded into pandas for Seaborn visualization)
+# Example usage (update paths as needed):
+if __name__ == "__main__":
+    input_directory = "/home/geuba03p/PyProjects/WINGS/data/compare_spread_features/"  # directory containing the simulation CSV files
+    combined_output = "combined_data.csv"
+    stats_output = "aggregated_daily_stats.csv"
+    main(input_directory, combined_output, stats_output)
