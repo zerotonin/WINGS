@@ -1,0 +1,17 @@
+# conda env create -f wings.yml
+
+name: wings
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.9
+  - numpy
+  - pandas
+  - matplotlib
+  - tqdm
+  - seaborn
+  - pytorch
+  - pip
+  - pip:
+      - torch  # Ensures PyTorch is installed via pip if not found in Conda
