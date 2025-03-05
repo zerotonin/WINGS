@@ -11,8 +11,8 @@ GRID_SIZE = 500
 INITIAL_POPULATION = 10
 INFECTED_FRACTION = 0.2
 MAX_TIME = 8760 # hours to simulate, 8760 is a year
-SAVE_PATH = "/home/bgeurten/wolbachia_spread_model/raw_data/compare_spread_features/"  # Update with your desired path
-PARALLEL_THREADS = 20 #Number of parallel simulations
+SAVE_PATH = "/home/geuba03p/PyProjects/WINGS/data/compare_spread_features/"  # Update with your desired path
+PARALLEL_THREADS = 10 #Number of parallel simulations
 
 
 def run_simulation(args):
