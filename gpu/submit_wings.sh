@@ -94,7 +94,7 @@ if [ "${QUICK}" = "1" ]; then
 fi
 
 CMD="python ${SCRIPT}"
-CMD="${CMD} --population 20000"
+CMD="${CMD} --population 50"
 CMD="${CMD} --max-pop 25000"
 CMD="${CMD} --grid-size 500"
 CMD="${CMD} --days ${DAYS}"
