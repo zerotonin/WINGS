@@ -1,28 +1,59 @@
 #!/bin/bash
 #SBATCH --job-name=wings_gpu
 #SBATCH --account=geuba03p
-#SBATCH --partition=aoraki_gpu_L40
-#SBATCH --gres=gpu:l40s:1          # request 1 L40S GPU
-#SBATCH --cpus-per-task=4
-#SBATCH --mem=32G
+#SBATCH --partition=aoraki_gpu_L40,aoraki_gpu,aoraki_gpu_H100
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=1
+#SBATCH --gpus-per-task=1
 #SBATCH --time=04:00:00
-#SBATCH --array=1-160              # 16 effect combos × 10 replicates
-#SBATCH --output=logs/wings_%A_%a.out
-#SBATCH --error=logs/wings_%A_%a.err
-
-# ---------------------------------------------------------------
-# WINGS GPU Simulation  –  SLURM array job
+#SBATCH --mem=32GB
+#SBATCH --array=1-160
+#SBATCH --output=wings_gpu_%A_%a.log
+#SBATCH --error=wings_gpu_%A_%a.err
+# ============================================================
+# W.I.N.G.S. — GPU-Accelerated Wolbachia Spread Simulation
+# ============================================================
 #
-# Maps SLURM_ARRAY_TASK_ID → (effect combination, replicate).
-# 16 combinations × 10 replicates = 160 tasks.
-# Each task runs independently on one GPU for ~1-5 min at N=20 000.
-# ---------------------------------------------------------------
+# Setup (run ONCE before first submission):
+#
+#   conda env create -f wings_gpu.yml
+#   conda activate wings-gpu
+#   python -c "import torch; print(torch.cuda.is_available(), torch.cuda.get_device_name())"
+#
+# Submit:
+#   sbatch submit_wings.sh
+#
+# Quick test (single combo, 30 days):
+#   sbatch --array=1 --time=00:15:00 --export=ALL,QUICK=1 submit_wings.sh
+#
+# Array layout: 16 effect combinations × 10 replicates = 160 tasks
+# ============================================================
 
-module load anaconda3          # adjust to your HPC module system
-module load cuda/12.1          # or whichever CUDA version matches your PyTorch
-conda activate wings
+# --- Paths ---
+PROJECT_DIR="/projects/sciences/zoology/geurten_lab/wolbachia_spread_model"
+CODE_DIR="/home/geuba03p/PyProjects/WINGS"
+SCRIPT="${CODE_DIR}/gpu/gpu_simulation.py"
+OUTDIR="${PROJECT_DIR}/gpu_results_${SLURM_ARRAY_JOB_ID}"
 
-mkdir -p logs data/gpu_results
+# --- Wait for filesystem mount ---
+sleep 5
+
+# --- Activate environment ---
+source ~/miniconda3/etc/profile.d/conda.sh
+conda activate wings-gpu
+
+# --- Diagnostics ---
+echo "============================================"
+echo "Job ID:       ${SLURM_ARRAY_JOB_ID}_${SLURM_ARRAY_TASK_ID}"
+echo "Node:         $(hostname)"
+echo "GPU:          $(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null || echo 'N/A')"
+echo "CUDA version: $(nvidia-smi --query-gpu=driver_version --format=csv,noheader 2>/dev/null || echo 'N/A')"
+echo "Python:       $(which python)"
+echo "Torch CUDA:   $(python -c 'import torch; print(torch.cuda.is_available(), torch.cuda.get_device_name() if torch.cuda.is_available() else "N/A")' 2>&1)"
+echo "Output dir:   ${OUTDIR}"
+echo "============================================"
+
+mkdir -p "${OUTDIR}"
 
 # --- Decode array task ID into combo + replicate ---
 TASK_ID=$((SLURM_ARRAY_TASK_ID - 1))   # 0-indexed
@@ -43,7 +74,7 @@ FLAGS=""
 [ $ER -eq 1 ] && FLAGS="$FLAGS --er"
 [ $IE -eq 1 ] && FLAGS="$FLAGS --ie"
 
-# Filename matching the original naming convention
+# Filename matching the original WINGS naming convention
 FNAME="cytoplasmic_incompatibility_$([ $CI -eq 1 ] && echo True || echo False)"
 FNAME="${FNAME}_male_killing_$([ $MK -eq 1 ] && echo True || echo False)"
 FNAME="${FNAME}_increased_exploration_rate_$([ $ER -eq 1 ] && echo True || echo False)"
@@ -52,17 +83,34 @@ FNAME="${FNAME}_${REP_ID}.csv"
 
 echo "Task $SLURM_ARRAY_TASK_ID: combo=$COMBO_ID rep=$REP_ID"
 echo "  CI=$CI MK=$MK ER=$ER IE=$IE"
-echo "  Output: data/gpu_results/$FNAME"
+echo "  Output: ${OUTDIR}/${FNAME}"
+echo "============================================"
 
-python gpu_simulation.py \
-    --population 20000 \
-    --max-pop 25000 \
-    --grid-size 500 \
-    --days 365 \
-    --backend cell_list \
-    --device cuda \
-    --seed $((42 + SLURM_ARRAY_TASK_ID)) \
-    $FLAGS \
-    --output "data/gpu_results/$FNAME"
+# --- Build command ---
+DAYS=365
+if [ "${QUICK}" = "1" ]; then
+    DAYS=30
+    echo ">>> QUICK MODE (30 days) <<<"
+fi
 
-echo "Done."
+CMD="python ${SCRIPT}"
+CMD="${CMD} --population 20000"
+CMD="${CMD} --max-pop 25000"
+CMD="${CMD} --grid-size 500"
+CMD="${CMD} --days ${DAYS}"
+CMD="${CMD} --backend cell_list"
+CMD="${CMD} --device cuda"
+CMD="${CMD} --seed $((42 + SLURM_ARRAY_TASK_ID))"
+CMD="${CMD} ${FLAGS}"
+CMD="${CMD} --output ${OUTDIR}/${FNAME}"
+
+echo "Running: ${CMD}"
+echo "============================================"
+
+# --- Run ---
+time ${CMD}
+
+echo ""
+echo "============================================"
+echo "Done. Results in: ${OUTDIR}/${FNAME}"
+echo "============================================"
