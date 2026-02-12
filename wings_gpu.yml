@@ -1,0 +1,21 @@
+# Setup (run ONCE before first submission):
+#   conda env create -f wings_gpu.yml
+#   conda activate wings-gpu
+#   python -c "import torch; print(torch.cuda.is_available(), torch.cuda.get_device_name())"
+
+name: wings-gpu
+channels:
+  - pytorch
+  - nvidia
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.11
+  - pytorch
+  - pytorch-cuda=12.1
+  - numpy
+  - pandas
+  - matplotlib
+  - seaborn
+  - tqdm
+  - scipy
