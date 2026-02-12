@@ -15,7 +15,7 @@ def benchmark(n_pop, backend, n_days=30):
     cfg = SimConfig(
         initial_population=n_pop,
         max_population=int(n_pop * 1.25),
-        max_eggs=int(n_pop * 1.0),
+        max_eggs=int(n_pop * 40),   # large enough for the 23-day egg pipeline
         grid_size=max(200, int(n_pop**0.5) * 5),  # scale grid with population
         mating_backend=backend,
         device='cuda' if torch.cuda.is_available() else 'cpu',
@@ -51,6 +51,7 @@ def benchmark(n_pop, backend, n_days=30):
     print(f"    Population : {sim.get_population_size():,}")
     print(f"    Infection  : {sim.get_infection_rate():.3f}")
     print(f"    Eggs       : {sim.pop.n_eggs:,}")
+    print(f"    Total entities (adults+eggs): {sim.pop.n:,}")
     sex = sim.get_sex_ratio()
     print(f"    Sex ratio  : F_U={sex['F_U']:,} F_I={sex['F_I']:,} "
           f"M_U={sex['M_U']:,} M_I={sex['M_I']:,}")

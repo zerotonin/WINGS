@@ -52,8 +52,9 @@ class SimConfig:
 
     # --- Population ---
     initial_population: int = 20_000
-    max_population: int = 25_000       # carrying capacity (soft-capped via logistic culling)
-    max_eggs: int = 20_000             # egg buffer cap
+    max_population: int = 25_000       # carrying capacity for adults
+    max_eggs: int = 800_000            # egg buffer cap (must be large: eggs take 23 days to
+                                       # hatch, so the pipeline holds ~daily_eggs × 23 days)
     infected_fraction: float = 0.10
     male_to_female_ratio: float = 0.50 # fraction male among initial uninfected
 
@@ -357,8 +358,11 @@ class GPUSimulation:
     # ------------------------------------------------------------------
     def _enforce_capacity(self):
         """
-        Separately cap adults and eggs to prevent unbounded growth.
-        Uses random subsampling (GPU-friendly grim_reaper).
+        Enforce population limits:
+        - Adults: random cull if above max_population (hard carrying capacity).
+        - Eggs: age-priority cull — remove the YOUNGEST eggs first so that
+          eggs close to hatching survive.  Without this, random culling
+          kills eggs long before they reach the 552-hour hatching age.
         """
         adult_mask = ~self.pop.is_egg
         egg_mask = self.pop.is_egg
@@ -369,16 +373,19 @@ class GPUSimulation:
         excess_eggs = n_eggs - self.cfg.max_eggs
 
         if excess_adults > 0 or excess_eggs > 0:
-            # Build a keep-probability mask
             keep = torch.ones(self.pop.n, device=self.device, dtype=torch.bool)
             if excess_adults > 0:
                 adult_idx = adult_mask.nonzero(as_tuple=False).squeeze(-1)
                 remove_idx = adult_idx[torch.randperm(n_adults, device=self.device)[:excess_adults]]
                 keep[remove_idx] = False
             if excess_eggs > 0:
+                # Age-priority: remove the youngest eggs (smallest age → furthest from hatching)
                 egg_idx = egg_mask.nonzero(as_tuple=False).squeeze(-1)
-                remove_idx = egg_idx[torch.randperm(n_eggs, device=self.device)[:excess_eggs]]
-                keep[remove_idx] = False
+                egg_ages = self.pop.age[egg_idx]
+                # Sort eggs by age ascending — first entries are youngest
+                _, age_order = torch.sort(egg_ages)
+                youngest_idx = egg_idx[age_order[:excess_eggs]]
+                keep[youngest_idx] = False
             self.pop.keep(keep)
 
     # ------------------------------------------------------------------
@@ -800,6 +807,15 @@ class GPUSimulation:
         eggs = torch.randint(1, cfg.egg_laying_max + 1, (P,),
                              device=self.device, dtype=torch.int32)
 
+        # --- Logistic birth suppression: reduce clutch size as N → K ---
+        # This prevents runaway egg production at carrying capacity.
+        # L(N) = max(0, 1 - N_adults/K).  Each egg count is multiplied by L.
+        n_adults = int((~pop.is_egg).sum().item())
+        logistic_factor = max(0.0, 1.0 - n_adults / cfg.max_population)
+        if logistic_factor < 1.0:
+            eggs = torch.round(eggs.float() * logistic_factor).to(torch.int32)
+            eggs = eggs.clamp(min=0)
+
         # --- Fecundity modifiers (only for infected mothers) ---
         mom_infected = pop.infected[mother_global_idx]  # [P]
         inc_eggs = effects.get('increased_eggs', False)
@@ -945,6 +961,7 @@ def run_experiment(cfg: SimConfig, n_days: int = 365, verbose: bool = True) -> G
             print(f"  Day {day:4d} | Pop {sim.get_population_size():6d} | "
                   f"Inf {sim.get_infection_rate():.3f} | "
                   f"Eggs {sim.pop.n_eggs:6d} | "
+                  f"Total {sim.pop.n:7d} | "
                   f"{elapsed:.1f}s elapsed")
     if verbose:
         print(f"Completed {n_days} days in {time.time()-start:.1f}s")
@@ -960,6 +977,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="WINGS GPU Simulation")
     parser.add_argument('--population', type=int, default=20_000)
     parser.add_argument('--max-pop', type=int, default=25_000)
+    parser.add_argument('--max-eggs', type=int, default=800_000,
+                        help='Egg buffer cap (must be large for 23-day pipeline)')
     parser.add_argument('--grid-size', type=int, default=500)
     parser.add_argument('--days', type=int, default=365)
     parser.add_argument('--ci', action='store_true', help='Enable cytoplasmic incompatibility')
@@ -977,6 +996,7 @@ if __name__ == '__main__':
     cfg = SimConfig(
         initial_population=args.population,
         max_population=args.max_pop,
+        max_eggs=args.max_eggs,
         grid_size=args.grid_size,
         ci_strength=args.ci_strength,
         mating_backend=args.backend,
@@ -995,6 +1015,7 @@ if __name__ == '__main__':
     print(f"  Device:     {args.device}")
     print(f"  Backend:    {args.backend}")
     print(f"  Population: {args.population}")
+    print(f"  Max pop:    {args.max_pop}  |  Max eggs: {cfg.max_eggs}")
     print(f"  Grid:       {args.grid_size}×{args.grid_size}")
     print(f"  Days:       {args.days}")
     print(f"  Effects:    {json.dumps(cfg.wolbachia_effects)}")
