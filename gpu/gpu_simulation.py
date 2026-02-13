@@ -51,8 +51,8 @@ class SimConfig:
     """All tuneable knobs in one place."""
 
     # --- Population ---
-    initial_population: int = 20_000
-    max_population: int = 25_000       # carrying capacity for adults
+    initial_population: int = 50
+    max_population: int = 20_000       # carrying capacity for adults
     max_eggs: int = 800_000            # egg buffer cap (must be large: eggs take 23 days to
                                        # hatch, so the pipeline holds ~daily_eggs × 23 days)
     infected_fraction: float = 0.10
@@ -91,6 +91,19 @@ class SimConfig:
 
     # --- Levy flight ---
     levy_alpha: float = 1.5             # Pareto shape parameter
+
+    # --- Density-dependent mortality mode ---
+    # Controls how population regulation occurs beyond logistic birth suppression.
+    #   'none'        : Only natural death (age > max_life) + hard cap. Original ABM behavior.
+    #   'logistic'    : Per-capita adult death rate increases linearly with N/K.
+    #   'cannibalism' : Beetle-specific: adults destroy eggs proportional to density.
+    #                   Based on Tribolium literature (Daly & Ryan 1983, Park 1934).
+    #   'contest'     : Above K, excess adults die each hour with probability ∝ (N-K)/N.
+    mortality_mode: str = 'cannibalism'
+    # Exponent for density-dependent effects (higher = sharper response near K)
+    mortality_beta: float = 2.0
+    # Egg cannibalism rate: fraction of eggs consumed per adult per hour at density = K
+    cannibalism_rate: float = 0.0001
 
     # --- Backend ---
     mating_backend: str = 'cell_list'  # 'brute' or 'cell_list'
@@ -346,12 +359,81 @@ class GPUSimulation:
         self.pop.is_egg[ready] = False  # promote to adult
 
     # ------------------------------------------------------------------
-    # Death / retirement
+    # Death / retirement  (with density-dependent mortality options)
     # ------------------------------------------------------------------
     def _retire_dead(self):
-        """Remove individuals (adults) that exceeded their life expectancy."""
+        """
+        Remove dead individuals from the population.
+        Always applies natural death (age > max_life).
+        Then applies the selected density-dependent mortality mode.
+        """
+        # 1. Natural death: remove adults that exceeded their life expectancy
         alive = self.pop.is_egg | (self.pop.age <= self.pop.max_life)
         self.pop.keep(alive)
+
+        mode = self.cfg.mortality_mode
+        if mode == 'none':
+            return
+
+        adult_mask = ~self.pop.is_egg
+        n_adults = int(adult_mask.sum().item())
+        K = self.cfg.max_population
+
+        if n_adults == 0 or K <= 0:
+            return
+
+        density_ratio = n_adults / K  # N/K
+
+        if mode == 'logistic':
+            # ── Logistic density-dependent adult mortality ──
+            # Per-capita hourly death probability increases with (N/K)^β.
+            # At N=K, extra mortality ≈ 1/mean_lifespan per hour (doubles natural rate).
+            # At N<<K, extra mortality ≈ 0.
+            if density_ratio <= 0.5:
+                return  # negligible at low density
+            base_hourly_mu = 1.0 / ((self.cfg.life_expectancy_min + self.cfg.life_expectancy_max) / 2)
+            extra_mu = base_hourly_mu * (density_ratio ** self.cfg.mortality_beta)
+            extra_mu = min(extra_mu, 0.1)  # cap at 10% per hour to avoid instabilities
+            # Each adult dies with probability extra_mu this hour
+            adult_idx = adult_mask.nonzero(as_tuple=False).squeeze(-1)
+            death_roll = torch.rand(n_adults, device=self.device)
+            survivors = death_roll >= extra_mu
+            kill_mask = torch.ones(self.pop.n, device=self.device, dtype=torch.bool)
+            kill_mask[adult_idx[~survivors]] = False
+            self.pop.keep(kill_mask)
+
+        elif mode == 'cannibalism':
+            # ── Egg cannibalism (Tribolium-style) ──
+            # Adults consume eggs at a rate that scales with adult density.
+            # This is the primary population regulation mechanism in flour beetles
+            # (Daly & Ryan 1983, Park 1934, Sonleitner & Gutherie 1991).
+            # Probability each egg is eaten = cannibalism_rate × N_adults × (N/K)^β
+            egg_mask = self.pop.is_egg
+            n_eggs = int(egg_mask.sum().item())
+            if n_eggs == 0:
+                return
+            p_eaten = self.cfg.cannibalism_rate * n_adults * (density_ratio ** self.cfg.mortality_beta)
+            p_eaten = min(p_eaten, 0.95)  # cap so some eggs always survive
+            egg_idx = egg_mask.nonzero(as_tuple=False).squeeze(-1)
+            death_roll = torch.rand(n_eggs, device=self.device)
+            kill_mask = torch.ones(self.pop.n, device=self.device, dtype=torch.bool)
+            kill_mask[egg_idx[death_roll < p_eaten]] = False
+            self.pop.keep(kill_mask)
+
+        elif mode == 'contest':
+            # ── Contest competition ──
+            # When N > K, each excess individual has a probability of dying
+            # each hour.  Below K, no extra mortality.
+            if n_adults <= K:
+                return
+            excess = n_adults - K
+            # Kill probability per adult = (excess / N) per hour
+            p_die = excess / n_adults
+            adult_idx = adult_mask.nonzero(as_tuple=False).squeeze(-1)
+            death_roll = torch.rand(n_adults, device=self.device)
+            kill_mask = torch.ones(self.pop.n, device=self.device, dtype=torch.bool)
+            kill_mask[adult_idx[death_roll < p_die]] = False
+            self.pop.keep(kill_mask)
 
     # ------------------------------------------------------------------
     # Carrying-capacity enforcement
@@ -975,8 +1057,8 @@ if __name__ == '__main__':
     import argparse, json
 
     parser = argparse.ArgumentParser(description="WINGS GPU Simulation")
-    parser.add_argument('--population', type=int, default=20_000)
-    parser.add_argument('--max-pop', type=int, default=25_000)
+    parser.add_argument('--population', type=int, default=50)
+    parser.add_argument('--max-pop', type=int, default=20_000)
     parser.add_argument('--max-eggs', type=int, default=800_000,
                         help='Egg buffer cap (must be large for 23-day pipeline)')
     parser.add_argument('--grid-size', type=int, default=500)
@@ -987,6 +1069,13 @@ if __name__ == '__main__':
     parser.add_argument('--ie', action='store_true', help='Enable increased eggs')
     parser.add_argument('--re', action='store_true', help='Enable reduced eggs')
     parser.add_argument('--ci-strength', type=float, default=1.0)
+    parser.add_argument('--mortality', choices=['none', 'logistic', 'cannibalism', 'contest'],
+                        default='cannibalism',
+                        help='Density-dependent mortality mode')
+    parser.add_argument('--mortality-beta', type=float, default=2.0,
+                        help='Exponent for density-dependent effects')
+    parser.add_argument('--cannibalism-rate', type=float, default=0.0001,
+                        help='Egg cannibalism rate per adult per hour at N=K')
     parser.add_argument('--backend', choices=['brute', 'cell_list'], default='cell_list')
     parser.add_argument('--device', choices=['cuda', 'cpu'], default='cuda')
     parser.add_argument('--seed', type=int, default=None)
@@ -999,6 +1088,9 @@ if __name__ == '__main__':
         max_eggs=args.max_eggs,
         grid_size=args.grid_size,
         ci_strength=args.ci_strength,
+        mortality_mode=args.mortality,
+        mortality_beta=args.mortality_beta,
+        cannibalism_rate=args.cannibalism_rate,
         mating_backend=args.backend,
         device=args.device,
         seed=args.seed,
@@ -1016,6 +1108,7 @@ if __name__ == '__main__':
     print(f"  Backend:    {args.backend}")
     print(f"  Population: {args.population}")
     print(f"  Max pop:    {args.max_pop}  |  Max eggs: {cfg.max_eggs}")
+    print(f"  Mortality:  {args.mortality} (beta={args.mortality_beta})")
     print(f"  Grid:       {args.grid_size}×{args.grid_size}")
     print(f"  Days:       {args.days}")
     print(f"  Effects:    {json.dumps(cfg.wolbachia_effects)}")
