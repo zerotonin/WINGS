@@ -5,7 +5,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --gpus-per-task=4
-#SBATCH --cpus-per-task=16
+#SBATCH --cpus-per-task=32
 #SBATCH --time=06:00:00
 #SBATCH --mem=64GB
 #SBATCH --output=wings_gpu_%j.log
@@ -14,19 +14,13 @@
 # W.I.N.G.S. — GPU-Accelerated Wolbachia Spread Simulation
 # ============================================================
 #
-# Scheduling strategy: SINGLE JOB, MULTIPLE GPUs, PARALLEL LOOP
-#
-# Instead of 160 separate array tasks (each needing its own
-# scheduler allocation + conda init + filesystem wait), this
-# runs ALL 160 combinations inside ONE job with 4 GPUs.
-# 4 simulations run in parallel (one per GPU), cycling through
-# all combos in ~40 serial batches.
-#
-# Advantages over array jobs:
-#   - 1 scheduler allocation instead of 160
-#   - 1 conda activation, 1 filesystem wait
-#   - Already-completed runs are automatically skipped
-#   - Progress counter shows exactly where you are
+# GPU Packing Strategy
+# --------------------
+# DCGM profiling shows each simulation uses only ~16% SM and
+# ~550 MB VRAM.  So we pack SIMS_PER_GPU concurrent simulations
+# on each GPU (default: 6), giving 4 GPUs × 6 = 24 sims in
+# parallel.  This raises effective GPU utilization to ~90%+ and
+# finishes 160 runs in ~7 batches instead of ~40.
 #
 # Setup (run ONCE):
 #   conda env create -f wings_gpu.yml
@@ -35,12 +29,12 @@
 # Submit:
 #   sbatch submit_wings.sh
 #
-# Quick test (single combo, 30 days):
+# Quick test:
 #   sbatch --time=00:15:00 --gpus-per-task=1 \
-#          --export=ALL,QUICK=1,COMBO_RANGE="0-0",NREPS=1 submit_wings.sh
+#          --export=ALL,QUICK=1,COMBO_RANGE="0-0",NREPS=1,SIMS_PER_GPU=1 submit_wings.sh
 #
-# Custom range (e.g., only combos 0-3 with 5 reps):
-#   sbatch --export=ALL,COMBO_RANGE="0-3",NREPS=5 submit_wings.sh
+# Tune packing density (e.g. on H100 with more VRAM):
+#   sbatch --export=ALL,SIMS_PER_GPU=8 submit_wings.sh
 # ============================================================
 
 # --- Paths ---
@@ -51,8 +45,10 @@ OUTDIR="${PROJECT_DIR}/gpu_results_${SLURM_JOB_ID}"
 
 # --- Configuration (override via --export) ---
 N_GPUS=${SLURM_GPUS_ON_NODE:-4}
-NREPS=${NREPS:-10}             # replicates per combo
-NCOMBOS=16                     # 2^4 effect combinations
+SIMS_PER_GPU=${SIMS_PER_GPU:-6}       # concurrent sims sharing one GPU
+PARALLEL=$((N_GPUS * SIMS_PER_GPU))   # total parallel slots
+
+NREPS=${NREPS:-10}
 COMBO_START=0
 COMBO_END=15
 if [ -n "${COMBO_RANGE}" ]; then
@@ -84,12 +80,16 @@ echo "  CUDA driver:  $(nvidia-smi --query-gpu=driver_version --format=csv,nohea
 echo "  Python:       $(which python)"
 echo "  PyTorch CUDA: $(python -c 'import torch; print(torch.cuda.is_available(), torch.cuda.get_device_name() if torch.cuda.is_available() else "N/A")' 2>&1)"
 echo "  Output dir:   ${OUTDIR}"
-echo "  Combos:       ${COMBO_START}–${COMBO_END} ($(( COMBO_END - COMBO_START + 1 )) combos)"
-echo "  Replicates:   ${NREPS}"
-echo "  Total runs:   ${TOTAL_RUNS}"
-echo "  Days/run:     ${DAYS}"
-echo "  GPUs in use:  ${N_GPUS} (parallel)"
-echo "  Quick mode:   ${QUICK:-0}"
+echo ""
+echo "  ── Schedule ──"
+echo "  Combos:         ${COMBO_START}–${COMBO_END} ($(( COMBO_END - COMBO_START + 1 )) combos)"
+echo "  Replicates:     ${NREPS}"
+echo "  Total runs:     ${TOTAL_RUNS}"
+echo "  GPUs:           ${N_GPUS}"
+echo "  Sims per GPU:   ${SIMS_PER_GPU}"
+echo "  Parallel slots: ${PARALLEL}"
+echo "  Days/run:       ${DAYS}"
+echo "  Quick mode:     ${QUICK:-0}"
 echo "============================================"
 echo ""
 
@@ -99,13 +99,11 @@ mkdir -p "${OUTDIR}"
 declare -a TASKS=()
 for COMBO_ID in $(seq ${COMBO_START} ${COMBO_END}); do
     for REP_ID in $(seq 0 $((NREPS - 1))); do
-        # Decode combo ID to 4 binary flags
         CI=$(( (COMBO_ID >> 3) & 1 ))
         MK=$(( (COMBO_ID >> 2) & 1 ))
         ER=$(( (COMBO_ID >> 1) & 1 ))
         IE=$(( (COMBO_ID >> 0) & 1 ))
 
-        # Build output filename (matches original WINGS naming convention)
         FNAME="cytoplasmic_incompatibility_$([ $CI -eq 1 ] && echo True || echo False)"
         FNAME="${FNAME}_male_killing_$([ $MK -eq 1 ] && echo True || echo False)"
         FNAME="${FNAME}_increased_exploration_rate_$([ $ER -eq 1 ] && echo True || echo False)"
@@ -123,10 +121,11 @@ done
 
 REMAINING=${#TASKS[@]}
 SKIPPED=$((TOTAL_RUNS - REMAINING))
+N_BATCHES=$(( (REMAINING + PARALLEL - 1) / PARALLEL ))
 
-echo "  Skipping ${SKIPPED} already-completed runs."
-echo "  Remaining: ${REMAINING} runs"
-echo "  Estimated batches: $(( (REMAINING + N_GPUS - 1) / N_GPUS )) (${N_GPUS} parallel)"
+echo "  Skipping:       ${SKIPPED} already-completed runs"
+echo "  Remaining:      ${REMAINING} runs"
+echo "  Batches:        ${N_BATCHES} (${PARALLEL} sims/batch)"
 echo "============================================"
 echo ""
 
@@ -135,20 +134,27 @@ if [ ${REMAINING} -eq 0 ]; then
     exit 0
 fi
 
-# --- Run tasks in parallel batches of N_GPUS ---
+# --- Run tasks in parallel batches ---
 COMPLETED=0
 START_TIME=$(date +%s)
 TASK_IDX=0
+BATCH_NUM=0
 
 while [ ${TASK_IDX} -lt ${REMAINING} ]; do
     PIDS=()
     BATCH_SIZE=0
+    BATCH_NUM=$((BATCH_NUM + 1))
 
-    for GPU_SLOT in $(seq 0 $((N_GPUS - 1))); do
-        IDX=$((TASK_IDX + GPU_SLOT))
+    echo "[$(date +%H:%M:%S)] ── Batch ${BATCH_NUM}/${N_BATCHES} ──"
+
+    for SLOT in $(seq 0 $((PARALLEL - 1))); do
+        IDX=$((TASK_IDX + SLOT))
         if [ ${IDX} -ge ${REMAINING} ]; then
             break
         fi
+
+        # Assign this slot to a GPU (round-robin)
+        GPU_ID=$((SLOT % N_GPUS))
 
         # Parse task
         IFS='|' read -r COMBO_ID REP_ID FNAME <<< "${TASKS[$IDX]}"
@@ -157,7 +163,6 @@ while [ ${TASK_IDX} -lt ${REMAINING} ]; do
         ER=$(( (COMBO_ID >> 1) & 1 ))
         IE=$(( (COMBO_ID >> 0) & 1 ))
 
-        # Build effect flags
         FLAGS=""
         [ $CI -eq 1 ] && FLAGS="$FLAGS --ci"
         [ $MK -eq 1 ] && FLAGS="$FLAGS --mk"
@@ -166,15 +171,15 @@ while [ ${TASK_IDX} -lt ${REMAINING} ]; do
 
         SEED=$((42 + COMBO_ID * 100 + REP_ID))
 
-        # Run on specific GPU via CUDA_VISIBLE_DEVICES
-        echo "[$(date +%H:%M:%S)] Starting combo=${COMBO_ID} rep=${REP_ID} on GPU ${GPU_SLOT}  (CI=$CI MK=$MK ER=$ER IE=$IE)"
-        CUDA_VISIBLE_DEVICES=${GPU_SLOT} python ${SCRIPT} \
+        echo "  slot ${SLOT}: combo=${COMBO_ID} rep=${REP_ID} → GPU ${GPU_ID}  (CI=$CI MK=$MK ER=$ER IE=$IE)"
+
+        CUDA_VISIBLE_DEVICES=${GPU_ID} python ${SCRIPT} \
             --population 50 \
             --max-pop 20000 \
             --grid-size 500 \
             --days ${DAYS} \
             --mortality cannibalism \
-            --backend cell_list \
+            --backend brute \
             --device cuda \
             --seed ${SEED} \
             ${FLAGS} \
@@ -185,9 +190,10 @@ while [ ${TASK_IDX} -lt ${REMAINING} ]; do
         BATCH_SIZE=$((BATCH_SIZE + 1))
     done
 
-    # Wait for this batch to finish
+    # Wait for entire batch
+    FAILED=0
     for PID in "${PIDS[@]}"; do
-        wait ${PID}
+        wait ${PID} || FAILED=$((FAILED + 1))
     done
     COMPLETED=$((COMPLETED + BATCH_SIZE))
     TASK_IDX=$((TASK_IDX + BATCH_SIZE))
@@ -203,19 +209,24 @@ while [ ${TASK_IDX} -lt ${REMAINING} ]; do
         RATE="?"
         ETA_MIN="?"
     fi
-    echo "[$(date +%H:%M:%S)] ── Progress: ${COMPLETED}/${REMAINING} done (${RATE}s/run, ETA: ${ETA_MIN} min) ──"
+    FAIL_MSG=""
+    if [ ${FAILED} -gt 0 ]; then
+        FAIL_MSG="  (${FAILED} FAILED — check logs)"
+    fi
+    echo "[$(date +%H:%M:%S)] ── Progress: ${COMPLETED}/${REMAINING} done | ${RATE}s/run | ETA: ${ETA_MIN} min${FAIL_MSG} ──"
+    echo ""
 done
 
 # --- Summary ---
 END_TIME=$(date +%s)
 TOTAL_ELAPSED=$(( END_TIME - START_TIME ))
-echo ""
+N_CSV=$(ls "${OUTDIR}"/*.csv 2>/dev/null | wc -l)
 echo "============================================"
 echo "  ALL DONE"
 echo "============================================"
-echo "  Completed: ${COMPLETED} runs"
+echo "  Completed: ${COMPLETED} runs in this session"
 echo "  Skipped:   ${SKIPPED} (already existed)"
 echo "  Wall time: $((TOTAL_ELAPSED / 60))m $((TOTAL_ELAPSED % 60))s"
 echo "  Output:    ${OUTDIR}"
-echo "  Files:     $(ls ${OUTDIR}/*.csv 2>/dev/null | wc -l) CSV files"
+echo "  CSV files: ${N_CSV}"
 echo "============================================"
