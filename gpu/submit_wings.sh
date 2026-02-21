@@ -6,7 +6,7 @@
 #SBATCH --ntasks-per-node=1
 #SBATCH --gpus-per-task=1
 #SBATCH --cpus-per-task=8
-#SBATCH --time=02:00:00
+#SBATCH --time=40:00:00
 #SBATCH --mem=16GB
 #SBATCH --array=0-26
 #SBATCH --output=wings_gpu_%A_%a.log
@@ -47,7 +47,7 @@ OUTDIR="${PROJECT_DIR}/gpu_results"
 
 # --- Configuration ---
 SIMS_PER_GPU=${SIMS_PER_GPU:-6}
-NREPS=${NREPS:-500}
+NREPS=${NREPS:-200}
 NCOMBOS=16
 TOTAL_RUNS=$((NCOMBOS * NREPS))    # 160
 DAYS=${DAYS:-365}
