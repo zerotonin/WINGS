@@ -47,7 +47,7 @@ OUTDIR="${PROJECT_DIR}/gpu_results"
 
 # --- Configuration ---
 SIMS_PER_GPU=${SIMS_PER_GPU:-6}
-NREPS=${NREPS:-10}
+NREPS=${NREPS:-500}
 NCOMBOS=16
 TOTAL_RUNS=$((NCOMBOS * NREPS))    # 160
 DAYS=${DAYS:-365}

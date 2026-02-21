@@ -1,4 +1,6 @@
 __pycache__/*
 figures/*
 *.csv
+*.log
 scripts/__pycache__/*
+.vscode/*
