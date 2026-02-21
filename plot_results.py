@@ -61,9 +61,12 @@ df, experiment_dict = assign_experiment_ids(df)
 
 # **1. Population Size Over Time**
 pop_stats = df.groupby(['experiment_id', 'experiment_description', 'Day'])['Population Size'] \
-              .agg(['mean', 'median', lambda x: x.quantile(0.25), lambda x: x.quantile(0.75)]) \
-              .reset_index()
-pop_stats.rename(columns={'<lambda_0>': 'q25', '<lambda_1>': 'q75'}, inplace=True)
+              .agg(
+                  mean='mean',
+                  median='median',
+                  q25=lambda x: x.quantile(0.25),
+                  q75=lambda x: x.quantile(0.75),
+              ).reset_index()
 
 # Save the population summary
 pop_stats.to_csv("figures/population_over_time.csv", index=False)
@@ -88,9 +91,12 @@ plt.close(fig)
 
 # **2. Infection Rate Over Time**
 inf_stats = df.groupby(['experiment_id', 'experiment_description', 'Day'])['Infection Rate'] \
-              .agg(['mean', 'median', lambda x: x.quantile(0.25), lambda x: x.quantile(0.75)]) \
-              .reset_index()
-inf_stats.rename(columns={'<lambda_0>': 'q25', '<lambda_1>': 'q75'}, inplace=True)
+              .agg(
+                  mean='mean',
+                  median='median',
+                  q25=lambda x: x.quantile(0.25),
+                  q75=lambda x: x.quantile(0.75),
+              ).reset_index()
 inf_stats.to_csv("figures/infection_rate_over_time.csv", index=False)
 
 # Plot
@@ -113,7 +119,8 @@ plt.close(fig)
 final_df = df.groupby(['experiment_id', 'experiment_description', 'Replicate ID']).last().reset_index()
 
 fig, ax = plt.subplots(figsize=(12, 6))
-sns.boxplot(x='experiment_description', y='Population Size', data=final_df, ax=ax, palette="colorblind")
+sns.boxplot(x='experiment_description', y='Population Size', hue='experiment_description',
+            data=final_df, ax=ax, palette="colorblind", legend=False)
 ax.set_title("Final Population Size by Experiment")
 ax.set_xlabel("Experiment")
 ax.set_ylabel("Final Population Size")
@@ -127,7 +134,8 @@ final_df[['experiment_id', 'experiment_description', 'Replicate ID', 'Population
 
 # **4. Boxplots for Final Infection Rate**
 fig, ax = plt.subplots(figsize=(12, 6))
-sns.boxplot(x='experiment_description', y='Infection Rate', data=final_df, ax=ax, palette="colorblind")
+sns.boxplot(x='experiment_description', y='Infection Rate', hue='experiment_description',
+            data=final_df, ax=ax, palette="colorblind", legend=False)
 ax.set_title("Final Infection Rate by Experiment")
 ax.set_xlabel("Experiment")
 ax.set_ylabel("Final Infection Rate")
@@ -140,16 +148,50 @@ final_df[['experiment_id', 'experiment_description', 'Replicate ID', 'Infection 
     "figures/final_infection_data.csv", index=False)
 
 # **5. Time-to-Fixation Distribution**
-fixation_df = df[df['Infection Rate'] >= 0.99].groupby(['experiment_id', 'experiment_description', 'Replicate ID'])['Day'].min().reset_index()
+fixation_df = df[df['Infection Rate'] >= 0.49].groupby(
+    ['experiment_id', 'experiment_description', 'Replicate ID']
+)['Day'].min().reset_index()
 fixation_df.rename(columns={'Day': 'Time to Fixation'}, inplace=True)
 
 fig, ax = plt.subplots(figsize=(8, 6))
-sns.histplot(data=fixation_df, x='Time to Fixation', hue='experiment_description', element="step", common_norm=False, kde=True, ax=ax)
-ax.set_title("Time to Infection Fixation")
-ax.set_xlabel("Days to Full Infection")
-ax.set_ylabel("Frequency")
+if len(fixation_df) == 0:
+    ax.text(0.5, 0.5, "No experiments reached 49% infection",
+            ha='center', va='center', transform=ax.transAxes, fontsize=14)
+    ax.set_title("Time to Infection Fixation")
+else:
+    # Filter to groups with >= 2 data points (KDE needs at least 2)
+    group_counts = fixation_df.groupby('experiment_description')['Time to Fixation'].count()
+    valid_groups = group_counts[group_counts >= 2].index.tolist()
+    single_groups = group_counts[group_counts == 1].index.tolist()
+
+    if valid_groups:
+        plot_df = fixation_df[fixation_df['experiment_description'].isin(valid_groups)]
+        sns.histplot(data=plot_df, x='Time to Fixation', hue='experiment_description',
+                     element="step", common_norm=False, kde=True, ax=ax)
+
+    # Add single-point groups as vertical lines
+    for grp_name in single_groups:
+        val = fixation_df.loc[fixation_df['experiment_description'] == grp_name,
+                              'Time to Fixation'].iloc[0]
+        ax.axvline(val, linestyle='--', alpha=0.7, label=f"{grp_name} (n=1)")
+
+    # Report combos that never reached fixation
+    all_descs = set(experiment_dict.values())
+    reached = set(fixation_df['experiment_description'].unique())
+    never = all_descs - reached
+    if never:
+        print(f"  Note: {len(never)} experiment(s) never reached 49% infection:")
+        for n in sorted(never):
+            print(f"    - {n}")
+
+    ax.set_title("Time to Infection Fixation")
+    ax.set_xlabel("Days to Full Infection")
+    ax.set_ylabel("Frequency")
+    ax.legend(fontsize='small')
+
 fig.savefig("figures/time_to_fixation.png", dpi=300, bbox_inches="tight")
 fig.savefig("figures/time_to_fixation.svg", bbox_inches="tight")
 plt.close(fig)
 
 fixation_df.to_csv("figures/time_to_fixation.csv", index=False)
+print("All figures saved to figures/")
