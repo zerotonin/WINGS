@@ -95,15 +95,25 @@ class SimConfig:
     # --- Density-dependent mortality mode ---
     # Controls how population regulation occurs beyond logistic birth suppression.
     #   'none'        : Only natural death (age > max_life) + hard cap. Original ABM behavior.
+    #                   Logistic birth suppression is applied to prevent runaway growth.
     #   'logistic'    : Per-capita adult death rate increases linearly with N/K.
     #   'cannibalism' : Beetle-specific: adults destroy eggs proportional to density.
     #                   Based on Tribolium literature (Daly & Ryan 1983, Park 1934).
     #   'contest'     : Above K, excess adults die each hour with probability ∝ (N-K)/N.
+    #
+    # IMPORTANT: When mortality_mode != 'none', logistic birth suppression is DISABLED
+    # so that CI can operate at carrying capacity.  Population regulation comes from
+    # the density-dependent mortality instead.
     mortality_mode: str = 'cannibalism'
     # Exponent for density-dependent effects (higher = sharper response near K)
     mortality_beta: float = 2.0
-    # Egg cannibalism rate: fraction of eggs consumed per adult per hour at density = K
-    cannibalism_rate: float = 0.0001
+    # Egg cannibalism rate: per-adult per-hour probability of eating one egg at N = K.
+    # Calibrated so that at steady state (N = K = 20,000), egg survival through the
+    # 552-hour pipeline balances adult mortality:
+    #   P(eaten/hr at K) = rate × K × (K/K)^β = rate × K ≈ 0.012
+    #   P(survive 552 hr) ≈ 0.988^552 ≈ 0.1%  (matches ~2.3 adults dying/hr)
+    #   → rate ≈ 0.012 / K = 6e-7  for K = 20,000
+    cannibalism_rate: float = 6e-7
 
     # --- Backend ---
     mating_backend: str = 'cell_list'  # 'brute' or 'cell_list'
@@ -890,13 +900,17 @@ class GPUSimulation:
                              device=self.device, dtype=torch.int32)
 
         # --- Logistic birth suppression: reduce clutch size as N → K ---
-        # This prevents runaway egg production at carrying capacity.
-        # L(N) = max(0, 1 - N_adults/K).  Each egg count is multiplied by L.
-        n_adults = int((~pop.is_egg).sum().item())
-        logistic_factor = max(0.0, 1.0 - n_adults / cfg.max_population)
-        if logistic_factor < 1.0:
-            eggs = torch.round(eggs.float() * logistic_factor).to(torch.int32)
-            eggs = eggs.clamp(min=0)
+        # ONLY applied when mortality_mode == 'none' (hard cap only).
+        # When density-dependent mortality is active (cannibalism/logistic/contest),
+        # the mortality mechanism regulates population.  Suppressing births at K
+        # would starve CI of eggs to act on, making Wolbachia invasion impossible
+        # once the population approaches carrying capacity.
+        if cfg.mortality_mode == 'none':
+            n_adults = int((~pop.is_egg).sum().item())
+            logistic_factor = max(0.0, 1.0 - n_adults / cfg.max_population)
+            if logistic_factor < 1.0:
+                eggs = torch.round(eggs.float() * logistic_factor).to(torch.int32)
+                eggs = eggs.clamp(min=0)
 
         # --- Fecundity modifiers (only for infected mothers) ---
         mom_infected = pop.infected[mother_global_idx]  # [P]
@@ -1074,8 +1088,8 @@ if __name__ == '__main__':
                         help='Density-dependent mortality mode')
     parser.add_argument('--mortality-beta', type=float, default=2.0,
                         help='Exponent for density-dependent effects')
-    parser.add_argument('--cannibalism-rate', type=float, default=0.0001,
-                        help='Egg cannibalism rate per adult per hour at N=K')
+    parser.add_argument('--cannibalism-rate', type=float, default=6e-7,
+                        help='Egg cannibalism rate per adult per hour at N=K (default: 6e-7, calibrated for K=20000)')
     parser.add_argument('--backend', choices=['brute', 'cell_list'], default='cell_list')
     parser.add_argument('--device', choices=['cuda', 'cpu'], default='cuda')
     parser.add_argument('--seed', type=int, default=None)
