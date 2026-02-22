@@ -6,9 +6,15 @@
 #SBATCH --ntasks-per-node=1
 #SBATCH --gpus-per-task=1
 #SBATCH --cpus-per-task=8
-#SBATCH --time=40:00:00
+#SBATCH --time=02:00:00
 #SBATCH --mem=16GB
-#SBATCH --array=0-26
+#SBATCH --array=0-533
+#  ↑ Formula: ceil(NCOMBOS * NREPS / SIMS_PER_GPU) - 1
+#    Default: ceil(16 * 200 / 6) - 1 = 533
+#    If you change NREPS or SIMS_PER_GPU, update this line!
+#    Examples:  10 reps → --array=0-26
+#              100 reps → --array=0-266
+#              200 reps → --array=0-533
 #SBATCH --output=wings_gpu_%A_%a.log
 #SBATCH --error=wings_gpu_%A_%a.err
 # ============================================================
@@ -22,6 +28,7 @@
 #                (each sim uses ~16% SM / ~550 MB VRAM).
 #
 #   160 total runs  ÷  6 per task  =  27 array tasks (0–26)
+#   3200 total runs ÷  6 per task  = 534 array tasks (0–533)
 #   Each task takes ~10–20 min for 365 days.
 #   Up to 4 tasks run simultaneously (your allocation limit).
 #
@@ -49,7 +56,8 @@ OUTDIR="${PROJECT_DIR}/gpu_results"
 SIMS_PER_GPU=${SIMS_PER_GPU:-6}
 NREPS=${NREPS:-200}
 NCOMBOS=16
-TOTAL_RUNS=$((NCOMBOS * NREPS))    # 160
+TOTAL_RUNS=$((NCOMBOS * NREPS))    # 16 × 200 = 3200
+CI_STRENGTH=${CI_STRENGTH:-1.0}
 DAYS=${DAYS:-365}
 if [ "${QUICK}" = "1" ]; then
     DAYS=30
