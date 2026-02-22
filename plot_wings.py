@@ -203,6 +203,10 @@ def load_data(path):
         ),
         axis=1,
     )
+    # Absolute infected count = population × infection rate
+    df["Infected Count"] = (
+        df["Population Size"] * df["Infection Rate"]
+    ).round().astype(int)
     return df
 
 
@@ -238,6 +242,11 @@ def compute_timeseries_stats(df, time_col="Day"):
         pop_median=("Population Size", "median"),
         pop_q25=("Population Size", lambda x: x.quantile(0.25)),
         pop_q75=("Population Size", lambda x: x.quantile(0.75)),
+        ninf_median=("Infected Count", "median"),
+        ninf_q25=("Infected Count", lambda x: x.quantile(0.25)),
+        ninf_q75=("Infected Count", lambda x: x.quantile(0.75)),
+        ninf_q05=("Infected Count", lambda x: x.quantile(0.05)),
+        ninf_q95=("Infected Count", lambda x: x.quantile(0.95)),
     ).reset_index()
     return stats
 
@@ -414,6 +423,66 @@ def plot_final_infection(
         vals = finals.loc[finals["Combo"] == label, "Infection Rate"].values
         for v in vals:
             csv_rows.append({"mechanic": label, "final_infection_rate": v})
+    pd.DataFrame(csv_rows).to_csv(f"{path_stem}.csv", index=False)
+    print(f"    ✓ {Path(path_stem).name}.csv")
+
+
+# ======================================================================
+#  Plot: generic final-value strip plot (reusable for any metric)
+# ======================================================================
+
+def plot_final_strip(
+    df, subset, subset_name, metric_col, ylabel, title, path_stem,
+    time_col="Day", csv_col_name=None, fixation_annot=False,
+):
+    """
+    Strip + median diamond + IQR bar for any final-timepoint metric.
+    Exports companion CSV with columns: mechanic, {csv_col_name}.
+    """
+    sub = filter_combos(df, subset)
+    labels = get_ordered_labels(subset)
+    finals = compute_final_values(sub, time_col)
+    csv_name = csv_col_name or metric_col.lower().replace(" ", "_")
+
+    fig, ax = plt.subplots(figsize=(8, 4.5))
+    rng = np.random.default_rng(42)
+
+    for i, label in enumerate(labels):
+        vals = finals.loc[finals["Combo"] == label, metric_col].values
+        if len(vals) == 0:
+            continue
+
+        color, _, _ = get_style(label)
+
+        jitter = rng.uniform(-0.25, 0.25, len(vals))
+        ax.scatter(
+            np.full(len(vals), i) + jitter, vals,
+            color=color, s=10, alpha=0.35, zorder=3, edgecolors="none",
+        )
+
+        med = np.median(vals)
+        ax.scatter(
+            [i], [med], color=color, s=70, zorder=5,
+            marker="D", edgecolors="white", linewidths=0.8,
+        )
+
+        q25, q75 = np.percentile(vals, [25, 75])
+        ax.plot([i, i], [q25, q75], color=color, lw=2.5,
+                solid_capstyle="round", zorder=4, alpha=0.7)
+
+    ax.set_xticks(range(len(labels)))
+    ax.set_xticklabels(labels, rotation=30, ha="right")
+    ax.set_ylabel(ylabel)
+    ax.set_title(title, fontweight="bold", pad=10)
+    fig.tight_layout()
+    save_fig(fig, path_stem)
+
+    # --- CSV export ---
+    csv_rows = []
+    for label in labels:
+        vals = finals.loc[finals["Combo"] == label, metric_col].values
+        for v in vals:
+            csv_rows.append({"mechanic": label, csv_name: v})
     pd.DataFrame(csv_rows).to_csv(f"{path_stem}.csv", index=False)
     print(f"    ✓ {Path(path_stem).name}.csv")
 
@@ -697,6 +766,22 @@ def metric_median_final_population(df_sub, time_col):
     return df_sub.loc[idx, "Population Size"].median()
 
 
+def metric_median_final_infected(df_sub, time_col):
+    idx = df_sub.groupby("Replicate ID")[time_col].idxmax()
+    return df_sub.loc[idx, "Infected Count"].median()
+
+
+def raw_final_infected_count(df_sub, time_col):
+    """One row per replicate: final number of infected beetles."""
+    idx = df_sub.groupby("Replicate ID")[time_col].idxmax()
+    rows = df_sub.loc[idx]
+    return [
+        {"replicate": int(r["Replicate ID"]),
+         "final_infected_count": int(r["Infected Count"])}
+        for _, r in rows.iterrows()
+    ]
+
+
 # ======================================================================
 #  Main figure generation pipeline
 # ======================================================================
@@ -802,6 +887,48 @@ def generate_figures(df, model, outdir, time_col="Day"):
             path_stem=os.path.join(outdir, "heatmap_population"),
             time_col=time_col, fmt=".0f",
             csv_raw_func=raw_final_population,
+        )
+
+        # ABM: infected count over time
+        for subset, sname, tag in [
+            (SUBSET_A, SUBSET_A_NAME, "individual"),
+            (SUBSET_B, SUBSET_B_NAME, "er_centric"),
+        ]:
+            plot_timeseries(
+                df, subset, sname, metric="ninf",
+                ylabel="Number of Infected Beetles",
+                title=f"{model_upper} — Infected Count ({sname})",
+                path_stem=os.path.join(
+                    outdir, f"infected_count_over_time_{tag}"
+                ),
+                time_col=time_col, is_abm=True, skip_before=skip,
+            )
+
+        # ABM: final infected count strip plots
+        for subset, sname, tag in [
+            (SUBSET_A, SUBSET_A_NAME, "individual"),
+            (SUBSET_B, SUBSET_B_NAME, "er_centric"),
+        ]:
+            plot_final_strip(
+                df, subset, sname,
+                metric_col="Infected Count",
+                ylabel="Final Infected Beetle Count",
+                title=f"{model_upper} — Final Infected Count ({sname})",
+                path_stem=os.path.join(
+                    outdir, f"final_infected_count_{tag}"
+                ),
+                time_col=time_col,
+                csv_col_name="final_infected_count",
+            )
+
+        # ABM: heatmap of final infected count
+        plot_heatmap(
+            df, metric_median_final_infected,
+            cmap="YlOrRd", cbar_label="Median Final Infected Count",
+            title=f"{model_upper} — Final Infected Count (all combos)",
+            path_stem=os.path.join(outdir, "heatmap_infected_count"),
+            time_col=time_col, fmt=".0f",
+            csv_raw_func=raw_final_infected_count,
         )
 
 
