@@ -1092,6 +1092,8 @@ if __name__ == '__main__':
                         help='Egg cannibalism rate per adult per hour at N=K (default: 6e-7, calibrated for K=20000)')
     parser.add_argument('--backend', choices=['brute', 'cell_list'], default='cell_list')
     parser.add_argument('--device', choices=['cuda', 'cpu'], default='cuda')
+    parser.add_argument('--infected-fraction', type=float, default=0.10,
+                        help='Initial fraction of population infected (default: 0.10)')
     parser.add_argument('--seed', type=int, default=None)
     parser.add_argument('--output', type=str, default=None, help='Output CSV path')
     args = parser.parse_args()
@@ -1101,6 +1103,7 @@ if __name__ == '__main__':
         max_population=args.max_pop,
         max_eggs=args.max_eggs,
         grid_size=args.grid_size,
+        infected_fraction=args.infected_fraction,
         ci_strength=args.ci_strength,
         mortality_mode=args.mortality,
         mortality_beta=args.mortality_beta,
@@ -1124,6 +1127,7 @@ if __name__ == '__main__':
     print(f"  Max pop:    {args.max_pop}  |  Max eggs: {cfg.max_eggs}")
     print(f"  Mortality:  {args.mortality} (beta={args.mortality_beta})")
     print(f"  Grid:       {args.grid_size}×{args.grid_size}")
+    print(f"  Inf frac:   {args.infected_fraction}")
     print(f"  Days:       {args.days}")
     print(f"  Effects:    {json.dumps(cfg.wolbachia_effects)}")
     print()
