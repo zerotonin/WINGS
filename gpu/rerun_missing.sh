@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=wings_rerun
+#SBATCH --job-name=wings_rerun05
 #SBATCH --account=geuba03p
 #SBATCH --partition=aoraki_gpu_L40,aoraki_gpu,aoraki_gpu_H100
 #SBATCH --nodes=1
@@ -8,27 +8,28 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --time=04:00:00
 #SBATCH --mem=16GB
-#SBATCH --output=wings_rerun_%j.log
-#SBATCH --error=wings_rerun_%j.err
+#SBATCH --output=wings_rerun05_%j.log
+#SBATCH --error=wings_rerun05_%j.err
 # ============================================================
-# W.I.N.G.S. — Rerun missing simulations
+# W.I.N.G.S. — Rerun missing simulations (0.50 infected fraction)
 # ============================================================
 # Scans OUTDIR for missing CSVs across all 16 combos × 200 reps,
 # then launches them 6-at-a-time on a single GPU.
 #
 # Usage:
-#   sbatch rerun_missing.sh            # auto-detect & run missing
-#   DRY_RUN=1 bash rerun_missing.sh    # just list what's missing
+#   sbatch rerun_missing_05.sh            # auto-detect & run missing
+#   DRY_RUN=1 bash rerun_missing_05.sh    # just list what's missing
 # ============================================================
 
 PROJECT_DIR="/projects/sciences/zoology/geurten_lab/wolbachia_spread_model"
 CODE_DIR="/home/geuba03p/PyProjects/WINGS"
 SCRIPT="${CODE_DIR}/gpu/gpu_simulation.py"
-OUTDIR="${PROJECT_DIR}/gpu_results"
+OUTDIR="${PROJECT_DIR}/abm_init05"
 
 NREPS=${NREPS:-200}
 NCOMBOS=16
 SIMS_PER_GPU=${SIMS_PER_GPU:-6}
+INFECTED_FRACTION=0.50
 DAYS=${DAYS:-365}
 DRY_RUN=${DRY_RUN:-0}
 
@@ -63,8 +64,10 @@ done
 N_MISSING=${#MISSING_RUNS[@]}
 echo "============================================"
 echo "  W.I.N.G.S. — Missing Run Scanner"
+echo "  *** 0.5 initial infection fraction ***"
 echo "============================================"
 echo "  Output dir:  ${OUTDIR}"
+echo "  Inf fraction: ${INFECTED_FRACTION}"
 echo "  Expected:    $((NCOMBOS * NREPS)) files"
 echo "  Missing:     ${N_MISSING}"
 echo "============================================"
@@ -139,6 +142,7 @@ for (( BATCH_START=0; BATCH_START < N_MISSING; BATCH_START += SIMS_PER_GPU )); d
             --max-pop 20000 \
             --grid-size 500 \
             --days ${DAYS} \
+            --infected-fraction ${INFECTED_FRACTION} \
             --mortality cannibalism \
             --backend brute \
             --device cuda \
