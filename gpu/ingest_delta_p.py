@@ -88,6 +88,10 @@ def main():
             skipped += 1
             continue
 
+        # Raw CSVs have no time column — row index is the day
+        if 'Day' not in df.columns:
+            df.insert(0, 'Day', range(len(df)))
+
         df['Phenotype'] = pheno
         df['Infected Fraction'] = frac
         df['Replicate ID'] = rep
