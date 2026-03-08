@@ -8,7 +8,7 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --time=04:00:00
 #SBATCH --mem=16GB
-#SBATCH --array=0-149
+#SBATCH --array=0-474
 #  ↑ Formula: ceil(TOTAL_RUNS / SIMS_PER_GPU) - 1
 #    Default: ceil(3 * 19 * 50 / 6) - 1 = ceil(2850/6)-1 = 474
 #    Quick test (10 reps):  ceil(3*19*10/6)-1 = 94  → --array=0-94
