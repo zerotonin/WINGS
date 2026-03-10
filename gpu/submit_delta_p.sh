@@ -36,7 +36,7 @@ MANIFEST="${OUTDIR}/.missing_manifest.txt"
 
 # --- Configuration ---
 SIMS_PER_GPU=${SIMS_PER_GPU:-6}
-NREPS=${NREPS:-100}
+NREPS=${NREPS:-200}
 DAYS=${DAYS:-365}
 DRY_RUN=${DRY_RUN:-0}
 if [ "${QUICK}" = "1" ]; then

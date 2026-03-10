@@ -5,9 +5,9 @@
 
 # Ingest ABM data  
 python ingest_data.py \
-  --input-dir /home/geuba03p/PyProjects/WINGS/data/compare_spread_features \
-  --output /home/geuba03p/PyProjects/WINGS/data/combined_abm.csv
+  --input-dir /home/geuba03p/PyProjects/WINGS/data/abm_init05 \
+  --output /home/geuba03p/PyProjects/WINGS/data/combined_abm05.csv
 
 # Generate figures (separate directories)
-python plot_wings.py --model wfm --input /home/geuba03p/PyProjects/WINGS/data/combined_wfm.csv
-python plot_wings.py --model abm --input /home/geuba03p/PyProjects/WINGS/data/combined_abm.csv
+# python plot_wings.py --model wfm --input /home/geuba03p/PyProjects/WINGS/data/combined_wfm.csv
+python plot_wings.py --model abm --input /home/geuba03p/PyProjects/WINGS/data/combined_abm05.csv
