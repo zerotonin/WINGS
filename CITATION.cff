@@ -1,27 +1,55 @@
 cff-version: 1.2.0
-message: "If you use this software, please cite it as below."
+message: >-
+  This software accompanies a manuscript in preparation.
+  If you use it, please cite both the software and the paper.
 title: "W.I.N.G.S. — Wolbachia Infection Numerical Growth Simulation"
 type: software
 authors:
-  - given-names: Bart Rudolph Harrie
-    family-names: Geurten
-    affiliation: "University of Otago, New Zealand"
-    orcid: "https://orcid.org/0000-0002-1816-3241"
+  - given-names: Yeganeh
+    family-names: Gharabigloozare
+    affiliation: >-
+      Department of Animal Evolution and Biodiversity,
+      University of Göttingen, Germany;
+      QIAGEN GmbH, Hilden, Germany
+    orcid: "https://orcid.org/0000-0002-9410-9378"
   - given-names: Christoph
     family-names: Bleidorn
-    affiliation: "Georg-August-Universität Göttingen, Germany"
+    affiliation: >-
+      Department of Animal Evolution and Biodiversity,
+      University of Göttingen, Germany
     orcid: "https://orcid.org/0000-0001-7295-6616"
-  - given-names: Yeganeh
-    family-names: Zare
-    orcid: "https://orcid.org/0000-0000-0000-0000"  # TODO: add real ORCID
+  - given-names: Bart R. H.
+    family-names: Geurten
+    email: bart.geurten@otago.ac.nz
+    affiliation: >-
+      Department of Zoology, University of Otago, New Zealand;
+      Department of Cellular Neurobiology, University of Göttingen, Germany
+    orcid: "https://orcid.org/0000-0002-1816-3241"
 repository-code: "https://github.com/zerotonin/WINGS"
 license: MIT
 version: "0.2.0"
-date-released: "2025-01-01"  # TODO: update on release
+date-released: "2025-01-01"  # TODO: update on release/publication
 keywords:
   - wolbachia
   - agent-based model
-  - tribolium
+  - tribolium confusum
   - cytoplasmic incompatibility
+  - exploration rate
   - population genetics
   - gpu simulation
+  - wright-fisher model
+preferred-citation:
+  type: article
+  title: >-
+    Wolbachia (Alphaproteobacteria) modulates the locomotion of female
+    flour beetles (Tribolium confusum) to increase its infection rate
+  authors:
+    - given-names: Yeganeh
+      family-names: Gharabigloozare
+    - given-names: Christoph
+      family-names: Bleidorn
+    - given-names: Bart R. H.
+      family-names: Geurten
+  journal: "TBA"
+  status: "in-preparation"
+  year: 2025

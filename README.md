@@ -1,25 +1,24 @@
 # W.I.N.G.S. — Wolbachia Infection Numerical Growth Simulation
 
-
 [![Documentation](https://img.shields.io/badge/docs-GitHub%20Pages-blue)](https://zerotonin.github.io/WINGS)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE.md)
-<!-- [![PyPI](https://img.shields.io/pypi/v/wings-sim)](https://pypi.org/project/wings-sim/) -->
 
 A spatially explicit agent-based model (ABM) of *Wolbachia* endosymbiont
-spread in *Tribolium* beetle populations, with GPU acceleration via PyTorch.
+spread in *Tribolium confusum* beetle populations, with GPU acceleration
+via PyTorch.
 
 ## Overview
 
-W.I.N.G.S. simulates the population dynamics of beetles infected with
-*Wolbachia*, modelling four distinct phenotypic effects and their
+W.I.N.G.S. simulates the population dynamics of flour beetles infected
+with *Wolbachia*, modelling four distinct phenotypic effects and their
 combinations:
 
 | Effect | Abbrev. | Mechanism |
 |--------|---------|-----------|
 | Cytoplasmic Incompatibility | **CI** | Infected ♂ × uninfected ♀ → embryo death |
 | Male Killing | **MK** | Infected male offspring die during development |
-| Increased Exploration Rate | **ER** | Infected beetles move further, increasing mate encounters |
-| Increased Egg Laying | **IE** | Infected females produce ~1.2× more eggs per clutch |
+| Increased Exploration Rate | **ER** | Infected females move further, increasing mate encounters |
+| Increased Egg Production | **IE** | Infected females produce ~1.2× more eggs per clutch |
 
 The model explores all 16 combinations of these binary effects across
 200 replicate simulations each, revealing how CI and ER act as
@@ -34,11 +33,12 @@ at high frequency where ER saturates.
   development pipeline. Runs on CUDA GPUs via PyTorch. Supports populations
   up to 20,000+ adults.
 
-- **Wright-Fisher Model** (`wings.models.wfm`) — Fixed-population, discrete-generation
-  model for clean frequency-dynamics analysis without population-size confounds.
+- **Wright-Fisher Model** (`wings.models.wfm`) — Fixed-population,
+  discrete-generation model for clean frequency-dynamics analysis without
+  population-size confounds.
 
-- **CPU ABM** (`wings.models.cpu`) — Original Python-loop implementation for
-  small populations and development/debugging.
+- **CPU ABM** (`wings.models.cpu`) — Original Python-loop implementation
+  for small populations and development/debugging.
 
 ## Installation
 
@@ -122,7 +122,6 @@ WINGS/
 ├── scripts/                Entry points, demos, GPU benchmarks
 ├── docs/                   Sphinx documentation source
 ├── envs/                   Conda environment definitions
-├── images/                 Project logo
 ├── pyproject.toml          Package metadata and dependencies
 ├── CITATION.cff            Machine-readable citation metadata
 ├── LICENSE.md              MIT License
@@ -147,26 +146,35 @@ open _build/html/index.html
 
 ## Citing W.I.N.G.S.
 
-If you use W.I.N.G.S. in your research, please cite:
+This software accompanies a manuscript currently in preparation:
 
-> Geurten, B., Bleidorn, C., & Zare, Y. (2025). W.I.N.G.S.: Wolbachia
-> Infection Numerical Growth Simulation. *In preparation.*
-> https://github.com/zerotonin/WINGS
-
-<!-- TODO: Update with DOI and journal reference when published -->
+> Gharabigloozare, Y., Bleidorn, C., & Geurten, B. (in prep.).
+> *Wolbachia* (Alphaproteobacteria) modulates the locomotion of female
+> flour beetles (*Tribolium confusum*) to increase its infection rate.
+> Submitted to *Proceedings of the Royal Society B*.
 
 A `CITATION.cff` file is included for automated citation tools (GitHub
 "Cite this repository", Zenodo, Zotero).
 
 ## License
 
-This project is licensed under the **MIT License** — see [LICENSE.md](LICENSE.md)
-for details. MIT was chosen to maximise adoption and reuse in the academic
-community. If you build on this work, we appreciate (but do not require)
-a citation.
+This project is licensed under the **MIT License** — see
+[LICENSE.md](LICENSE.md) for details.
 
 ## Authors
 
-- **Bart Geurten** — University of Otago, New Zealand
-- **Christoph Bleidorn** — Georg-August-Universität Göttingen, Germany
-- **Yeganeh Zare**
+- **Yeganeh Gharabigloozare** — Department of Animal Evolution and
+  Biodiversity, University of Göttingen, Germany; Genomics Application
+  Specialists Team, QIAGEN GmbH, Hilden, Germany
+- **Christoph Bleidorn** — Department of Animal Evolution and
+  Biodiversity, University of Göttingen, Germany
+- **Bart Geurten** — Department of Zoology, University of Otago,
+  Dunedin, New Zealand; Department of Cellular Neurobiology, University
+  of Göttingen, Germany
+
+## Acknowledgements
+
+This project was funded by the University of Göttingen. Beetle strains
+were provided by Merrilee Susan Haas (Stored Product Insect and
+Engineering Research, USDA, Kansas). Computations were performed on
+Aoraki, the University of Otago's high-performance computing cluster.
