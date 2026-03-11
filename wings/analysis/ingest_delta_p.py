@@ -34,7 +34,17 @@ FNAME_RE = re.compile(
 
 
 def parse_filename(fname):
-    """Extract (phenotype, fraction, replicate) from filename."""
+    """Extract phenotype, initial fraction, and replicate ID from filename.
+
+    Expected format: ``{PHENOTYPE}_frac{NNN}_rep{R}.csv``
+    (e.g. ``CI_frac050_rep3.csv`` → phenotype=CI, fraction=0.50, rep=3).
+
+    Args:
+        fname (str): Filename (basename only).
+
+    Returns:
+        tuple or None: ``(phenotype, fraction, replicate)`` or ``None``.
+    """
     m = FNAME_RE.match(fname)
     if not m:
         return None
@@ -45,6 +55,12 @@ def parse_filename(fname):
 
 
 def main():
+    """CLI entry point for Δp sweep data ingestion.
+
+    Scans the input directory for per-run CSVs, adds a ``Day``
+    column from row index (raw CSVs lack a time column), and
+    combines into a single dataset.
+    """
     parser = argparse.ArgumentParser(
         description="W.I.N.G.S. — Δp sweep data ingestion"
     )

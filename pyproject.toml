@@ -3,28 +3,74 @@ requires = ["setuptools>=68.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "wings"
+name = "wings-sim"
 version = "0.2.0"
-description = "Wolbachia Infection Numerical Growth Simulation"
+description = "Wolbachia Infection Numerical Growth Simulation — a spatially explicit ABM of Wolbachia spread in Tribolium beetles"
 readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.9"
 authors = [
-    {name = "Bart Geurten"},
+    {name = "Bart Geurten", email = "bart.geurten@otago.ac.nz"},
     {name = "Christoph Bleidorn"},
     {name = "Yeganeh Zare"},
 ]
+keywords = ["wolbachia", "agent-based-model", "tribolium", "population-genetics", "cytoplasmic-incompatibility"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+]
 dependencies = [
-    "numpy",
-    "pandas",
-    "matplotlib",
-    "tqdm",
-    "scipy",
+    "numpy>=1.21",
+    "pandas>=1.3",
+    "matplotlib>=3.5",
+    "tqdm>=4.60",
+    "scipy>=1.7",
 ]
 
 [project.optional-dependencies]
 gpu = ["torch>=2.0"]
-dev = ["seaborn", "pytest"]
+docs = [
+    "sphinx>=7.0",
+    "sphinx-rtd-theme>=2.0",
+    "sphinx-autodoc-typehints>=1.25",
+    "myst-parser>=3.0",
+]
+dev = [
+    "seaborn",
+    "pytest>=7.0",
+    "pytest-cov",
+    "ruff",
+]
+
+[project.scripts]
+wings-abm = "wings.models.gpu_abm:main"
+wings-wfm = "wings.models.wfm:main"
+wings-ingest = "wings.analysis.ingest:main"
+wings-ingest-dp = "wings.analysis.ingest_delta_p:main"
+wings-plot = "wings.analysis.plot_wings:main"
+wings-plot-dp = "wings.analysis.plot_delta_p:main"
+
+[project.urls]
+Homepage = "https://github.com/zerotonin/WINGS"
+Documentation = "https://zerotonin.github.io/WINGS"
+Repository = "https://github.com/zerotonin/WINGS"
+Issues = "https://github.com/zerotonin/WINGS/issues"
 
 [tool.setuptools.packages.find]
 include = ["wings*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

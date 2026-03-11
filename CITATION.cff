@@ -1,0 +1,27 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "W.I.N.G.S. — Wolbachia Infection Numerical Growth Simulation"
+type: software
+authors:
+  - given-names: Bart Rudolph Harrie
+    family-names: Geurten
+    affiliation: "University of Otago, New Zealand"
+    orcid: "https://orcid.org/0000-0002-1816-3241"
+  - given-names: Christoph
+    family-names: Bleidorn
+    affiliation: "Georg-August-Universität Göttingen, Germany"
+    orcid: "https://orcid.org/0000-0001-7295-6616"
+  - given-names: Yeganeh
+    family-names: Zare
+    orcid: "https://orcid.org/0000-0000-0000-0000"  # TODO: add real ORCID
+repository-code: "https://github.com/zerotonin/WINGS"
+license: MIT
+version: "0.2.0"
+date-released: "2025-01-01"  # TODO: update on release
+keywords:
+  - wolbachia
+  - agent-based model
+  - tribolium
+  - cytoplasmic incompatibility
+  - population genetics
+  - gpu simulation

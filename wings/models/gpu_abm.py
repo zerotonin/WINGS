@@ -48,7 +48,28 @@ import time
 # ---------------------------------------------------------------------------
 @dataclass
 class SimConfig:
-    """All tuneable knobs in one place."""
+    """Configuration dataclass for the GPU ABM simulation.
+
+    All simulation parameters are set here and passed to
+    :class:`GPUSimulation`. Immutable after construction.
+
+    Attributes:
+        initial_population (int): Starting number of adult beetles.
+        max_population (int): Carrying capacity (K).
+        max_eggs (int): Egg buffer cap.
+        grid_size (int): Side length of the toroidal grid.
+        ci_strength (float): CI intensity (0–1).
+        mortality_mode (str): Density-dependent mortality type.
+            One of ``"none"``, ``"logistic"``, ``"cannibalism"``, ``"contest"``.
+        mortality_beta (float): Exponent for density dependence.
+        cannibalism_rate (float): Egg cannibalism rate at N=K.
+        mating_backend (str): ``"brute"`` (O(F·M) distance matrix) or
+            ``"cell_list"`` (O(N·k) spatial hashing).
+        device (str): ``"cuda"`` or ``"cpu"``.
+        seed (int, optional): Random seed for reproducibility.
+        wolbachia_effects (dict): Boolean toggles for CI, MK, ER, IE, RE.
+        infected_fraction (float): Initial infection prevalence.
+    """
 
     # --- Population ---
     initial_population: int = 50
@@ -196,11 +217,21 @@ class PopulationState:
 # Main simulation
 # ---------------------------------------------------------------------------
 class GPUSimulation:
-    """
-    Fully GPU-vectorized WINGS simulation.
+    """GPU-accelerated agent-based model of *Wolbachia* spread.
 
-    Every time-step is one simulated **hour**.  Call ``step()`` for a single
-    hour or ``step_one_day()`` for 24 hours with aggregated recording.
+    Replaces per-beetle Python loops with fully vectorised PyTorch
+    tensor operations.  All beetle state (position, sex, infection,
+    age, mating cooldown) is stored as contiguous GPU tensors.
+
+    Two mating backends are supported:
+        - **brute**: Full F×M distance matrix. Fast for N < 20,000.
+        - **cell_list**: Spatial hashing into grid cells.  Scales to N > 100,000.
+
+    The egg pipeline models *Tribolium*'s 23-day (552-hour) development
+    period as a ring buffer of daily cohorts.
+
+    Args:
+        config (SimConfig): Simulation configuration.
     """
 
     def __init__(self, cfg: SimConfig):
@@ -304,7 +335,18 @@ class GPUSimulation:
     # Single simulation step  (1 hour)
     # ------------------------------------------------------------------
     def step(self):
-        """Advance the simulation by one hour."""
+        """Advance the simulation by one hour.
+
+        Sequence:
+            1. Age all adults; remove those exceeding max lifespan.
+            2. Move adults (Lévy flight; ER beetles get 1.4× step size).
+            3. Find mating pairs within mating distance.
+            4. Reproduce (apply CI, MK, IE/RE).
+            5. Add new eggs to the pipeline.
+            6. Hatch eggs from 23 days ago.
+            7. Apply density-dependent egg mortality (cannibalism).
+            8. Record population size and infection rate.
+        """
         self._move()
         self._age()
         self._hatch_eggs()
@@ -1030,7 +1072,14 @@ class GPUSimulation:
     # CSV export (compatible with existing analysis pipeline)
     # ------------------------------------------------------------------
     def export_history_csv(self, path: str):
-        """Write the recorded time-series to a CSV matching the existing format."""
+        """Write the simulation time series to a CSV file.
+
+        Columns: ``Population Size``, ``Infection Rate`` (one row per
+        recorded time point — typically daily).
+
+        Args:
+            path (str): Output CSV file path.
+        """
         import csv
         n = min(len(self.infection_history), len(self.population_history))
         with open(path, 'w', newline='') as f:
@@ -1045,8 +1094,18 @@ class GPUSimulation:
 # Convenience: run a full experiment
 # ---------------------------------------------------------------------------
 def run_experiment(cfg: SimConfig, n_days: int = 365, verbose: bool = True) -> GPUSimulation:
-    """
-    Run a complete simulation for ``n_days`` days and return the simulation object.
+    """Run a complete simulation experiment.
+
+    Creates a :class:`GPUSimulation` from the config, runs for
+    ``n_days × 24`` hours, and returns the simulation object
+    with its recorded history.
+
+    Args:
+        config (SimConfig): Simulation parameters.
+        n_days (int): Duration in days. Defaults to ``365``.
+
+    Returns:
+        GPUSimulation: Completed simulation with history.
     """
     sim = GPUSimulation(cfg)
     start = time.time()

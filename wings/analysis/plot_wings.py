@@ -172,6 +172,17 @@ SUBSET_B = [
 # ======================================================================
 
 def combo_label(ci, mk, er, ie):
+    """Build a human-readable label from boolean effect flags.
+
+    Args:
+        ci (bool): Cytoplasmic incompatibility active.
+        mk (bool): Male killing active.
+        er (bool): Increased exploration rate active.
+        ie (bool): Increased eggs active.
+
+    Returns:
+        str: Label like ``"CI+ER"`` or ``"None"`` (no effects).
+    """
     parts = []
     if ci: parts.append("CI")
     if mk: parts.append("MK")
@@ -181,7 +192,13 @@ def combo_label(ci, mk, er, ie):
 
 
 def save_fig(fig, path_stem):
-    """Save figure as both PNG and SVG."""
+    """Save a matplotlib figure as PNG (300 dpi) and SVG (editable text).
+
+    Args:
+        fig (matplotlib.figure.Figure): The figure to save.
+        path_stem (str): Output path without extension (e.g.
+            ``"figures/infection_rate"``). Produces ``.png`` and ``.svg``.
+    """
     fig.savefig(f"{path_stem}.png")
     fig.savefig(f"{path_stem}.svg")
     plt.close(fig)
@@ -189,7 +206,16 @@ def save_fig(fig, path_stem):
 
 
 def load_data(path):
-    """Load combined simulation CSV produced by ingest_data.py."""
+    """Load a combined simulation CSV produced by :func:`ingest.ingest_directory`.
+
+    Normalises boolean effect columns and adds a ``Combo`` label column.
+
+    Args:
+        path (str): Path to the combined CSV.
+
+    Returns:
+        pandas.DataFrame: Loaded data with boolean columns and combo labels.
+    """
     df = pd.read_csv(path)
     for col in ["Cytoplasmic Incompatibility", "Male Killing",
                 "Increased Exploration Rate", "Increased Eggs"]:
@@ -211,6 +237,15 @@ def load_data(path):
 
 
 def filter_combos(df, subset):
+    """Filter a DataFrame to only the specified effect combinations.
+
+    Args:
+        df (pandas.DataFrame): Combined simulation data.
+        subset (list[tuple]): List of ``(ci, mk, er, ie)`` boolean tuples.
+
+    Returns:
+        pandas.DataFrame: Filtered copy containing only matching rows.
+    """
     masks = []
     for ci, mk, er, ie in subset:
         m = (
@@ -224,6 +259,14 @@ def filter_combos(df, subset):
 
 
 def get_ordered_labels(subset):
+    """Return combo labels in the order defined by the subset.
+
+    Args:
+        subset (list[tuple]): List of ``(ci, mk, er, ie)`` tuples.
+
+    Returns:
+        list[str]: Combo label strings in subset order.
+    """
     return [combo_label(ci, mk, er, ie) for ci, mk, er, ie in subset]
 
 
@@ -232,6 +275,20 @@ def get_ordered_labels(subset):
 # ======================================================================
 
 def compute_timeseries_stats(df, time_col="Day"):
+    """Compute per-timepoint summary statistics across replicates.
+
+    For each combination × time point, calculates median, IQR
+    (25th/75th percentiles), and 5th/95th percentiles for both
+    infection rate and population size.
+
+    Args:
+        df (pandas.DataFrame): Simulation data.
+        time_col (str): Name of the time column. Defaults to ``"Day"``.
+
+    Returns:
+        pandas.DataFrame: Summary statistics with columns
+        ``inf_median``, ``inf_q25``, ``inf_q75``, etc.
+    """
     group_cols = ["Combo", time_col]
     stats = df.groupby(group_cols).agg(
         inf_median=("Infection Rate", "median"),
@@ -252,11 +309,32 @@ def compute_timeseries_stats(df, time_col="Day"):
 
 
 def compute_final_values(df, time_col="Day"):
+    """Extract the final time-point values for each replicate.
+
+    Args:
+        df (pandas.DataFrame): Simulation data.
+        time_col (str): Name of the time column. Defaults to ``"Day"``.
+
+    Returns:
+        pandas.DataFrame: One row per combo × replicate, containing
+        the last recorded infection rate and population size.
+    """
     idx = df.groupby(["Combo", "Replicate ID"])[time_col].idxmax()
     return df.loc[idx].copy()
 
 
 def compute_time_to_fixation(df, time_col="Day", threshold=FIXATION_THRESHOLD):
+    """Find the first time point where infection rate ≥ threshold.
+
+    Args:
+        df (pandas.DataFrame): Simulation data.
+        time_col (str): Time column name. Defaults to ``"Day"``.
+        threshold (float): Fixation threshold. Defaults to ``0.99``.
+
+    Returns:
+        pandas.DataFrame: Columns ``Combo``, ``Replicate ID``,
+        ``t_fix`` (NaN if fixation never reached).
+    """
     records = []
     for (combo, rep), grp in df.groupby(["Combo", "Replicate ID"]):
         above = grp[grp["Infection Rate"] >= threshold]
@@ -273,6 +351,23 @@ def plot_timeseries(
     df, subset, subset_name, metric, ylabel, title,
     path_stem, time_col="Day", is_abm=True, skip_before=None
 ):
+    """Line + ribbon plot of a metric over time for each combination.
+
+    Draws median line with IQR ribbon and 5th–95th percentile
+    whisker band.  ABM plots use symlog x-axis; WFM uses linear.
+
+    Args:
+        df (pandas.DataFrame): Simulation data.
+        subset (list[tuple]): Effect combinations to include.
+        subset_name (str): Human-readable subset name for title.
+        metric (str): Column prefix (``"inf"`` or ``"pop"``).
+        ylabel (str): Y-axis label.
+        title (str): Figure title.
+        path_stem (str): Output path without extension.
+        time_col (str): Time column name. Defaults to ``"Day"``.
+        is_abm (bool): Use ABM-specific formatting. Defaults to ``True``.
+        skip_before (int, optional): Skip time points before this day.
+    """
     sub = filter_combos(df, subset)
     labels = get_ordered_labels(subset)
     stats = compute_timeseries_stats(sub, time_col)
@@ -351,12 +446,19 @@ def plot_timeseries(
 def plot_final_infection(
     df, subset, subset_name, title, path_stem, time_col="Day"
 ):
-    """
-    Strip plot of final infection rate with fixation-% annotation.
+    """Strip plot of final infection rate with fixation-% annotation.
 
-    Solves the problem of boxplots collapsing when most values = 1.0.
-    Each replicate is a jittered dot; a horizontal bar shows the median;
-    annotation gives the fixation percentage.
+    Each replicate is a jittered dot; a diamond shows the median;
+    a vertical bar shows the IQR.  Fixation percentage is annotated
+    above each combination.
+
+    Args:
+        df (pandas.DataFrame): Simulation data.
+        subset (list[tuple]): Effect combinations to include.
+        subset_name (str): Subset label for title.
+        title (str): Figure title.
+        path_stem (str): Output path without extension.
+        time_col (str): Time column. Defaults to ``"Day"``.
     """
     sub = filter_combos(df, subset)
     labels = get_ordered_labels(subset)
@@ -495,6 +597,20 @@ def plot_time_to_fixation(
     df, subset, subset_name, title, path_stem,
     time_col="Day", is_abm=True
 ):
+    """Violin + strip plot of time-to-fixation across replicates.
+
+    Combinations that never reach fixation are listed as italic
+    annotations.
+
+    Args:
+        df (pandas.DataFrame): Simulation data.
+        subset (list[tuple]): Effect combinations.
+        subset_name (str): Subset label.
+        title (str): Figure title.
+        path_stem (str): Output path without extension.
+        time_col (str): Time column. Defaults to ``"Day"``.
+        is_abm (bool): ABM formatting. Defaults to ``True``.
+    """
     sub = filter_combos(df, subset)
     labels = get_ordered_labels(subset)
     ttf = compute_time_to_fixation(sub, time_col)
@@ -587,15 +703,25 @@ def plot_time_to_fixation(
 def plot_heatmap(df, metric_func, cmap, cbar_label, title, path_stem,
                  time_col="Day", fmt=".2f", vmin=None, vmax=None,
                  csv_raw_func=None, csv_value_col="value"):
-    """
-    4×4 heatmap:
-      rows:    —, MK, CI, CI+MK    (CI/MK severity axis)
-      columns: —, IE, ER, ER+IE    (exploration/fecundity axis)
+    """4×4 heatmap of all 16 effect combinations.
 
-    If csv_raw_func is provided, exports a CSV with per-replicate raw
-    values (mechanic, replicate, value) for statistical analysis.
-    csv_raw_func(df_sub, time_col) should return a list of dicts with
-    keys 'Replicate ID' and the value column.
+    Rows represent CI × MK axis (—, MK, CI, CI+MK).
+    Columns represent ER × IE axis (—, IE, ER, ER+IE).
+
+    Args:
+        df (pandas.DataFrame): Simulation data.
+        metric_func (callable): Function ``(df_subset, time_col) → float``
+            computing the cell value.
+        cmap (str): Matplotlib colourmap name.
+        cbar_label (str): Colourbar label.
+        title (str): Figure title.
+        path_stem (str): Output path without extension.
+        time_col (str): Time column. Defaults to ``"Day"``.
+        fmt (str): Number format string. Defaults to ``".2f"``.
+        vmin (float, optional): Colourmap minimum.
+        vmax (float, optional): Colourmap maximum.
+        csv_raw_func (callable, optional): Per-replicate extraction
+            function for CSV export.
     """
     row_configs = [
         (False, False, "—"),
@@ -787,6 +913,18 @@ def raw_final_infected_count(df_sub, time_col):
 # ======================================================================
 
 def generate_figures(df, model, outdir, time_col="Day"):
+    """Generate the complete set of publication figures for one model.
+
+    Produces time series, strip plots, violin plots, and heatmaps
+    for both combo subsets (Individual Effects, ER-Centric), plus
+    ABM-only population size figures.
+
+    Args:
+        df (pandas.DataFrame): Combined simulation data.
+        model (str): ``"abm"`` or ``"wfm"``.
+        outdir (str): Output directory for figures.
+        time_col (str): Time column. Defaults to ``"Day"``.
+    """
     is_abm = (model == "abm")
     os.makedirs(outdir, exist_ok=True)
 
@@ -937,6 +1075,11 @@ def generate_figures(df, model, outdir, time_col="Day"):
 # ======================================================================
 
 def main():
+    """CLI entry point for the publication figure generator.
+
+    Parses ``--model``, ``--input``, ``--outdir`` arguments,
+    loads data, and generates all figures.
+    """
     parser = argparse.ArgumentParser(
         description="W.I.N.G.S. — Publication figure generator",
         formatter_class=argparse.RawDescriptionHelpFormatter,

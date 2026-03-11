@@ -386,6 +386,11 @@ def run_all(args):
 # ======================================================================
 
 def main():
+    """CLI entry point for the Wright-Fisher model.
+
+    Supports single-run mode and ``--run-all`` for the full
+    16-combination sweep with multiple replicates.
+    """
     parser = argparse.ArgumentParser(
         description="W.I.N.G.S. — Fixed-size discrete-generation Wolbachia model",
         formatter_class=argparse.RawDescriptionHelpFormatter,

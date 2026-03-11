@@ -1,21 +1,36 @@
 import numpy as np
 
 class Beetle:
-    """
-    A class representing a beetle in the Wolbachia simulation environment.
+    """A single beetle agent in the CPU-based ABM.
+
+    Represents an individual *Tribolium* beetle with spatial position,
+    infection status, sex, age, and mating state. Movement follows a
+    Lévy flight distribution, with infected beetles optionally moving
+    further (increased exploration rate).
 
     Attributes:
-        position (tuple): The (x, y) coordinates of the beetle in the environment.
-        infected (bool): True if the beetle is infected with Wolbachia, False otherwise.
-        sex (str): The sex of the beetle, either 'male' or 'female'.
-        age (int): The age of the beetle in hours.
-        environment (Environment): A reference to the environment the beetle is in.
-        max_life_expectancy (float): The maximum life expectancy of the beetle in hours.
-        mating_cooldown (int): The cooldown period in hours before the beetle can mate again.
-        last_mating_time (int): The last time the beetle mated (in hours since start).
-        grid_size (int): The size of the simulation environment.
+        position (tuple): ``(x, y)`` coordinates on the toroidal grid.
+        infected (bool): Whether the beetle carries *Wolbachia*.
+        sex (str): ``'male'`` or ``'female'``.
+        age (int): Current age in hours.
+        environment (Environment): Reference to the simulation environment.
+        max_life_expectancy (float): Maximum lifespan in hours.
+        mating_cooldown (int): Hours between successive matings.
+        last_mating_time (int): Hour of the most recent mating event.
+        grid_size (int): Side length of the simulation grid.
     """
     def __init__(self, position, infected, sex, environment, age=0, mating_cooldown=48):
+        """Initialise a beetle agent.
+
+        Args:
+            position (tuple): Initial ``(x, y)`` grid coordinates.
+            infected (bool): *Wolbachia* infection status.
+            sex (str): ``'male'`` or ``'female'``.
+            environment (Environment): The simulation environment.
+            age (int): Starting age in hours. Defaults to ``0``.
+            mating_cooldown (int): Minimum hours between matings.
+                Defaults to ``48`` (2 days).
+        """
         self.position = position
         self.infected = infected
         self.sex = sex
@@ -45,9 +60,12 @@ class Beetle:
         self.position = (new_x, new_y)
 
     def move(self):
-        """
-        Updates the beetle's position by performing a Lévy flight step.
-        (Movement occurs regardless of age for simplicity in this model.)
+        """Move the beetle using a Lévy flight step.
+
+        Step length is drawn from a power-law distribution.  Infected
+        beetles with the *increased_exploration_rate* phenotype receive
+        a 1.4× movement multiplier, increasing their effective mating
+        radius.  The grid wraps toroidally.
         """
         self.levy_flight_step()
 

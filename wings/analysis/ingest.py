@@ -81,6 +81,11 @@ def normalise_columns(df: pd.DataFrame) -> pd.DataFrame:
 
 # ── Main ─────────────────────────────────────────────────────────
 def main(data_dir: str, output_file: str):
+    """CLI entry point for data ingestion.
+
+    Parses ``--input-dir`` and ``--output`` arguments, calls
+    :func:`ingest_directory`, and writes the combined CSV.
+    """
     data_dir = Path(data_dir)
     if not data_dir.is_dir():
         print(f"ERROR: Directory not found: {data_dir}")

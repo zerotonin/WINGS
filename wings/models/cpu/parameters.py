@@ -1,16 +1,25 @@
 import random
 
 class ParameterSet:
-    """
-    Stores physiological and behavioral parameters with predefined ranges, sampling them stochastically.
-    These introduce variability into simulations.
-    Attributes sampled on initialization:
-        fecundity_increase_factor (float): Multiplier >1.0 for increased fecundity (if Wolbachia provides fertility benefit).
-        fecundity_decrease_factor (float): Multiplier <1.0 for reduced fecundity (if Wolbachia imposes a fertility cost).
-        ci_strength (float): Cytoplasmic incompatibility strength (e.g., 0.5, 0.75, or 1.0).
-        infected_male_advantage (float): Advantage factor for infected male sperm in competition (not used directly in current logic).
-        male_offspring_rate (float): Probability an offspring is male under male-killing (typically around 0.1).
-        female_mating_interval (int): Base mating cooldown for females, in hours.
+    """Stochastic physiological and behavioural parameters.
+
+    Each attribute is sampled from a biologically plausible range
+    on instantiation, introducing inter-individual variability
+    into the simulation.
+
+    Attributes:
+        fecundity_increase_factor (float): Multiplier (>1) for
+            *Wolbachia*-induced fecundity increase. Range: 1.1–1.3.
+        fecundity_decrease_factor (float): Multiplier (<1) for
+            *Wolbachia*-induced fecundity cost. Range: 0.8–0.9.
+        ci_strength (float): Cytoplasmic incompatibility strength.
+            Sampled from {0.5, 0.75, 1.0}.
+        infected_male_advantage (float): Sperm competition advantage
+            factor for infected males. Range: 0.7–0.9.
+        male_offspring_rate (float): Fraction of offspring that are
+            male under male killing. Range: 0.1–0.2.
+        female_mating_interval (int): Base mating cooldown in hours.
+            Fixed at 48 (2 days).
     """
     def __init__(self):
         # Sample fecundity effect factors within plausible ranges (10–30% increase, 10–20% decrease)

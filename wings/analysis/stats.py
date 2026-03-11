@@ -5,14 +5,28 @@ from tqdm import tqdm
 import itertools
 
 def read_data(file_path):
-    """
-    Reads the CSV file and returns a DataFrame.
+    """Read a simulation CSV into a pandas DataFrame.
+
+    Args:
+        file_path (str): Path to the CSV file.
+
+    Returns:
+        pandas.DataFrame: Raw simulation data.
     """
     return pd.read_csv(file_path)
 
 def bootstrap_ci(data, n_bootstrap=1000, ci=0.95):
-    """
-    Calculate bootstrap confidence interval for the median.
+    """Compute a bootstrap confidence interval for the median.
+
+    Args:
+        data (array-like): Observed values.
+        n_bootstrap (int): Number of bootstrap resamples.
+            Defaults to ``10000``.
+        ci (float): Confidence level (0–1). Defaults to ``0.95``.
+
+    Returns:
+        tuple[float, float]: Lower and upper bounds of the
+        confidence interval.
     """
     bootstrapped_medians = []
     for _ in range(n_bootstrap):

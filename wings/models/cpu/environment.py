@@ -4,28 +4,50 @@ import numpy as np
 import random
 
 class Environment:
-    """
-    Represents the simulation environment for the Wolbachia-infected beetle population.
-    Manages the beetle population, their interactions, and tracks metrics like population size and infection rates.
+    """The simulation arena for the CPU-based ABM.
 
-    Parameters:
-        size (int): Size of the simulation grid.
-        initial_population (int): Initial number of beetles.
-        wolbachia_effects (dict): Which Wolbachia effects are active (CI, male_killing, etc).
-        infected_fraction (float): Initial fraction of the population infected.
-        max_population (int): Maximum allowed population size.
-        max_eggs (int): Maximum allowed number of eggs (unhatched offspring).
-        male_to_female_ratio (float): Desired male:female ratio for initial population.
-        param_set (ParameterSet, optional): Provides randomized parameters (fecundity, etc).
-        ci_strength (float): CI strength (0.0–1.0, fraction of incompatible eggs that fail).
-        multiple_mating (bool): Whether females can mate multiple times per cycle.
-        use_gpu (bool): Whether to use GPU acceleration with PyTorch.
+    Manages a population of :class:`Beetle` agents on a toroidal grid,
+    handles hourly time-stepping (movement, mating, ageing, mortality),
+    and records population size and infection rate over time.
+
+    Attributes:
+        grid_size (int): Side length of the toroidal grid.
+        population (list[Beetle]): Current adult beetles.
+        eggs (list): Developing eggs (hatch after ~552 hours).
+        wolbachia_effects (dict): Boolean toggles for CI, MK, ER, IE, RE.
+        max_population (int): Carrying capacity.
+        max_eggs (int): Maximum egg buffer size.
+        population_size (list[int]): Time series of population counts.
+        infection_history (list[float]): Time series of infection rates.
+        infected_fraction (float): Current infection prevalence.
     """
     def __init__(self, size, initial_population, wolbachia_effects, 
                  infected_fraction=0.1, max_population=50, max_eggs=40, 
                  male_to_female_ratio=0.5,
                  param_set=None, ci_strength=1.0, multiple_mating=True, 
                  use_gpu=False):
+        """Initialise the simulation environment.
+
+        Creates the initial population with the given infection fraction,
+        balanced sex ratio, and optional stochastic parameters.
+
+        Args:
+            size (int): Grid side length (grid is ``size × size``).
+            initial_population (int): Number of starting beetles.
+            wolbachia_effects (dict): Boolean toggles, e.g.
+                ``{'cytoplasmic_incompatibility': True, 'male_killing': False, ...}``.
+            infected_fraction (float): Proportion of initial population
+                carrying *Wolbachia*. Defaults to ``0.1``.
+            max_population (int): Carrying capacity. Defaults to ``50``.
+            max_eggs (int): Egg buffer cap. Defaults to ``40``.
+            male_to_female_ratio (float): Sex ratio. Defaults to ``0.5``.
+            param_set (ParameterSet, optional): Stochastic parameter source.
+            ci_strength (float): CI intensity (0–1). Defaults to ``1.0``.
+            multiple_mating (bool): Allow females to mate multiple times
+                per cycle. Defaults to ``True``.
+            use_gpu (bool): Whether to attempt GPU acceleration.
+                Defaults to ``False``.
+        """
         self.grid_size = size
         self.population = []
         self.wolbachia_effects = wolbachia_effects
@@ -69,9 +91,10 @@ class Environment:
             self.update_population_arrays()
 
     def initialize_population(self, initial_population):
-        """
-        Initializes the beetle population with the given size.
-        Places beetles randomly in the central area and assigns age, sex, and infection status.
+        """Create the initial population of beetles.
+
+        Distributes beetles uniformly on the grid with the specified
+        infection fraction and sex ratio.
         """
         infected_count = 0
         male_count = 0
@@ -120,12 +143,16 @@ class Environment:
         return (x, y)
 
     def run_simulation_step(self):
-        """
-        Executes a single hour of simulation:
-        - Moves all beetles (vectorized on GPU if enabled)
-        - Ages and hatches eggs
-        - Handles mating events and enforces population limits
-        - Updates infection statistics
+        """Advance the simulation by one hour.
+
+        Sequence per step:
+            1. Move all beetles (Lévy flight).
+            2. Identify mating pairs within mating distance.
+            3. Reproduce (with CI/MK/IE/RE effects).
+            4. Age all beetles; remove dead.
+            5. Hatch eggs that have completed development.
+            6. Enforce carrying capacity via random culling.
+            7. Record population size and infection rate.
         """
         # 1. Move all beetles (Lévy flight step for each)
         if self.use_gpu and len(self.population) > 0:

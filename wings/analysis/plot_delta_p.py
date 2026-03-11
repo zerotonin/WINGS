@@ -78,56 +78,25 @@ PHENO_STYLE = {
 EGG_HATCH_DAY = 23
 
 
-# Module-level flag, set from CLI
-USE_SYMLOG_Y = False
-
-
-def apply_symlog_y(ax, binned_df=None, dp_col='dp_median'):
-    """
-    Apply symmetric-log y-axis if USE_SYMLOG_Y is True.
-    Auto-computes linthresh from the data: the linear region spans
-    the smallest non-trivial median Δp, so the ER signal (small but
-    positive) stays visible while the CI peak gets compressed.
-    """
-    if not USE_SYMLOG_Y:
-        return
-
-    # Auto-compute linthresh from the smallest positive median
-    if binned_df is not None and dp_col in binned_df.columns:
-        abs_vals = binned_df[dp_col].abs()
-        pos_vals = abs_vals[abs_vals > 0]
-        if len(pos_vals) > 0:
-            linthresh = float(pos_vals.quantile(0.1))
-        else:
-            linthresh = 1e-4
-    else:
-        linthresh = 1e-4
-
-    # Ensure linthresh is sensible
-    linthresh = max(linthresh, 1e-6)
-
-    ax.set_yscale('symlog', linthresh=linthresh)
-
-    # Nice tick formatting — avoid scientific notation clutter
-    from matplotlib.ticker import FuncFormatter
-    def fmt(x, _):
-        if abs(x) < linthresh:
-            return f'{x:.1e}'
-        elif abs(x) < 0.01:
-            return f'{x:.4f}'
-        elif abs(x) < 0.1:
-            return f'{x:.3f}'
-        else:
-            return f'{x:.2f}'
-    ax.yaxis.set_major_formatter(FuncFormatter(fmt))
-
-
 # ======================================================================
 #  Column detection
 # ======================================================================
 
 def detect_columns(df):
-    """Auto-detect time and infection rate column names."""
+    """Auto-detect the time and infection rate column names.
+
+    Searches for common variants (``Day``, ``Days``, ``Time``, etc.)
+    case-insensitively.
+
+    Args:
+        df (pandas.DataFrame): Input data.
+
+    Returns:
+        tuple[str, str]: ``(time_column_name, infection_column_name)``.
+
+    Raises:
+        SystemExit: If either column cannot be found.
+    """
     cols_lower = {c.lower().strip(): c for c in df.columns}
 
     time_col = None
@@ -166,27 +135,56 @@ def detect_columns(df):
 # ======================================================================
 
 def model_ci_asymmetric(p, A, alpha, gamma):
-    """
-    Asymmetric CI selection: A · p^α · (1-p)^γ.
-    Generalises the Turelli p(1-p) form (which is α=γ=1).
-    When α > γ the peak shifts right (higher p), matching ABM
-    where spatial clustering and population growth sustain CI
-    advantage beyond p = 0.5.
+    """Asymmetric CI selection coefficient: ``A · p^α · (1-p)^γ``.
+
+    Generalises the Turelli (1994) model ``p(1-p) · s_h / (1 - p·s_h)``
+    by allowing different exponents on the left (α) and right (γ)
+    sides.  When α > γ the peak shifts right of 0.5, capturing
+    spatial clustering and population growth effects.
+
+    Args:
+        p (numpy.ndarray): Infection frequency array.
+        A (float): Amplitude parameter.
+        alpha (float): Left exponent (rise rate at low p).
+        gamma (float): Right exponent (decay rate at high p).
+
+    Returns:
+        numpy.ndarray: Expected Δp per generation.
     """
     return A * np.power(p, alpha) * np.power(1 - p, gamma)
 
 
 def model_er(p, s_0, beta):
-    """
-    ER diminishing returns: s_0 · (1-p)^β.
-    Mate-finding advantage strongest when infected females are
-    rare, saturates as they become common.
+    """ER selection coefficient with diminishing returns: ``s_0 · (1-p)^β``.
+
+    The mate-finding advantage of increased exploration decays as
+    infected females become common and the mating landscape saturates.
+
+    Args:
+        p (numpy.ndarray): Infection frequency array.
+        s_0 (float): Base advantage at p → 0.
+        beta (float): Decay exponent (higher = faster saturation).
+
+    Returns:
+        numpy.ndarray: Expected Δp per generation from ER.
     """
     return s_0 * np.power(1 - p, beta)
 
 
 def model_ci_er(p, A, alpha, gamma, s_0, beta):
-    """Combined CI + ER (additive)."""
+    """Combined CI + ER selection (additive).
+
+    Args:
+        p (numpy.ndarray): Infection frequency.
+        A (float): CI amplitude.
+        alpha (float): CI left exponent.
+        gamma (float): CI right exponent.
+        s_0 (float): ER base advantage.
+        beta (float): ER decay exponent.
+
+    Returns:
+        numpy.ndarray: Combined expected Δp.
+    """
     return model_ci_asymmetric(p, A, alpha, gamma) + model_er(p, s_0, beta)
 
 
@@ -195,47 +193,38 @@ def model_ci_er(p, A, alpha, gamma, s_0, beta):
 # ======================================================================
 
 def extract_delta_p(df, time_col, inf_col, dt=7, ascending_only=False):
-    """
-    Extract (p, Δp) pairs from each replicate time series.
+    """Extract ``(p, Δp)`` pairs from replicate time series.
 
-    Parameters
-    ----------
-    ascending_only : bool
-        If True, only use intervals where p is increasing (Δp > 0)
-        and only the FIRST passage through each p-range. This isolates
-        the active invasion phase from equilibrium noise.
+    For each replicate, samples the infection rate at intervals of
+    ``dt`` days and computes the change.  Skips the pre-hatch
+    period (day < 23) and absorbing boundaries (p < 0.01 or p > 0.99).
+
+    Args:
+        df (pandas.DataFrame): Combined simulation data.
+        time_col (str): Name of the time column.
+        inf_col (str): Name of the infection rate column.
+        dt (int): Sampling interval in days. Defaults to ``7``.
+        ascending_only (bool): If ``True``, only use intervals where
+            Δp > 0 and only the first passage through each 5%-bin.
+            Defaults to ``False``.
+
+    Returns:
+        pandas.DataFrame: Columns ``Phenotype``, ``p``, ``delta_p``,
+        ``initial_fraction``, and optionally ``pop_size``.
     """
     records = []
     groups = df.groupby(['Phenotype', 'Infected Fraction', 'Replicate ID'])
     print(f"    Processing {len(groups)} time series...")
 
-    # Detect population size column
-    pop_col = None
-    for c in df.columns:
-        if 'population' in c.lower() and 'size' in c.lower():
-            pop_col = c
-            break
-    if pop_col is None:
-        for c in df.columns:
-            if 'population' in c.lower() or 'pop' in c.lower():
-                pop_col = c
-                break
-    has_pop = pop_col is not None
-    if has_pop:
-        print(f"    Population column: '{pop_col}'")
-
     for (pheno, frac, rep), grp in groups:
         grp = grp.sort_values(time_col)
         days = grp[time_col].values.astype(float)
         inf = grp[inf_col].values.astype(float)
-        pop = grp[pop_col].values.astype(float) if has_pop else None
 
         # Skip pre-hatch
         mask = days >= EGG_HATCH_DAY
         days = days[mask]
         inf = inf[mask]
-        if pop is not None:
-            pop = pop[mask]
 
         if len(days) < 2:
             continue
@@ -272,92 +261,29 @@ def extract_delta_p(df, time_col, inf_col, dt=7, ascending_only=False):
                     continue
                 visited_bins.add(p_bin)
 
-            record = {
+            records.append({
                 'Phenotype': pheno,
                 'p': p_t,
                 'delta_p': dp,
                 'initial_fraction': frac,
-            }
-            if pop is not None:
-                record['pop_size'] = float(pop[idx_t])
-            records.append(record)
-
-    return pd.DataFrame(records)
-
-
-def extract_delta_p_initial(df, time_col, inf_col, dt=24):
-    """
-    Turelli-correct extraction: ONE Δp per replicate.
-
-    For each replicate, measures the change in infection frequency over
-    a single generation interval (dt days) starting from the first
-    post-hatch time point.  This directly maps to Turelli's recursion:
-        "given p now, what is E[Δp] over one generation?"
-
-    The 19 initial fractions (0.05–0.95) provide the p-axis.
-    50 replicates per condition give the variance.
-
-    No sign filtering, no trajectory averaging, no contamination from
-    equilibrium phases.  One clean measurement per replicate.
-    """
-    records = []
-    groups = df.groupby(['Phenotype', 'Infected Fraction', 'Replicate ID'])
-    print(f"    Processing {len(groups)} time series (initial Δp only)...")
-
-    # Detect population size column
-    pop_col = None
-    for c in df.columns:
-        if 'population' in c.lower() and 'size' in c.lower():
-            pop_col = c
-            break
-    if pop_col is None:
-        for c in df.columns:
-            if 'population' in c.lower() or 'pop' in c.lower():
-                pop_col = c
-                break
-
-    for (pheno, frac, rep), grp in groups:
-        grp = grp.sort_values(time_col)
-        days = grp[time_col].values.astype(float)
-        inf = grp[inf_col].values.astype(float)
-        pop = grp[pop_col].values.astype(float) if pop_col else None
-
-        # Skip to post-hatch
-        mask = days >= EGG_HATCH_DAY
-        days = days[mask]
-        inf = inf[mask]
-        if pop is not None:
-            pop = pop[mask]
-
-        if len(days) < 2:
-            continue
-
-        # Single measurement: first post-hatch point → one generation later
-        t0 = days[0]
-        idx_t1 = np.argmin(np.abs(days - (t0 + dt)))
-
-        if idx_t1 == 0:
-            continue
-
-        p_t0 = float(inf[0])
-        p_t1 = float(inf[idx_t1])
-        dp = p_t1 - p_t0
-
-        record = {
-            'Phenotype': pheno,
-            'p': p_t0,
-            'delta_p': dp,
-            'initial_fraction': frac,
-        }
-        if pop is not None:
-            record['pop_size'] = float(pop[0])
-        records.append(record)
+            })
 
     return pd.DataFrame(records)
 
 
 def bin_delta_p(dp_df, n_bins=20):
-    """Bin (p, Δp) and compute summary statistics."""
+    """Bin ``(p, Δp)`` data by infection frequency and compute statistics.
+
+    Args:
+        dp_df (pandas.DataFrame): Raw Δp data from extraction.
+        n_bins (int): Number of equal-width bins over [0, 1].
+            Defaults to ``20``.
+
+    Returns:
+        pandas.DataFrame: Per-bin summary with ``Phenotype``,
+        ``p_mid``, ``dp_median``, ``dp_q25``, ``dp_q75``,
+        ``dp_mean``, ``n``.
+    """
     records = []
     bin_edges = np.linspace(0, 1, n_bins + 1)
     bin_mids = (bin_edges[:-1] + bin_edges[1:]) / 2
@@ -387,7 +313,18 @@ def bin_delta_p(dp_df, n_bins=20):
 # ======================================================================
 
 def fit_analytical(binned_df):
-    """Fit CI (asymmetric) and ER models to binned ABM data."""
+    """Fit the asymmetric CI and diminishing-returns ER models.
+
+    Uses ``scipy.optimize.curve_fit`` on the binned median Δp data.
+    Falls back to default parameters if fitting fails or data is
+    insufficient.
+
+    Args:
+        binned_df (pandas.DataFrame): Binned Δp data.
+
+    Returns:
+        dict: Fitted parameters ``{A, alpha, gamma, s_0, beta}``.
+    """
     params = {}
 
     # --- CI: A · p^α · (1-p)^γ ---
@@ -451,7 +388,12 @@ def fit_analytical(binned_df):
 # ======================================================================
 
 def save_fig(fig, path_stem):
-    """Save PNG (300dpi) + SVG (editable text)."""
+    """Save a figure as PNG (300 dpi) and SVG (editable text).
+
+    Args:
+        fig (matplotlib.figure.Figure): Figure to save.
+        path_stem (str): Output path without extension.
+    """
     fig.savefig(f"{path_stem}.png")
     fig.savefig(f"{path_stem}.svg")
     plt.close(fig)
@@ -463,7 +405,18 @@ def save_fig(fig, path_stem):
 # ======================================================================
 
 def plot_delta_p_figure(binned_df, params, outdir, dt):
-    """3-panel: CI, ER, CI+ER with ABM data + analytical overlay."""
+    """Three-panel figure: CI, ER, CI+ER with ABM data and analytical overlay.
+
+    Each panel shows binned ABM median + IQR ribbon and a dashed
+    analytical curve.  CI panels mark the unstable equilibrium
+    (Δp = 0 crossing).
+
+    Args:
+        binned_df (pandas.DataFrame): Binned Δp data.
+        params (dict): Fitted analytical parameters.
+        outdir (str): Output directory.
+        dt (int): Time interval used for Δp.
+    """
     p_th = np.linspace(0.02, 0.98, 200)
 
     theory = {
@@ -518,7 +471,6 @@ def plot_delta_p_figure(binned_df, params, outdir, dt):
         y_max, y_min = 0.005, -0.001
     for ax in axes:
         ax.set_ylim(y_min, y_max)
-        apply_symlog_y(ax, binned_df)
 
     fig.suptitle('Complementary frequency dependence of CI and ER',
                  fontsize=13, fontweight='bold', y=1.02)
@@ -531,7 +483,18 @@ def plot_delta_p_figure(binned_df, params, outdir, dt):
 # ======================================================================
 
 def plot_overlay_figure(binned_df, params, outdir, dt):
-    """Single-panel overlay with ER/CI crossing point."""
+    """Single-panel overlay of all three phenotypes with crossing point.
+
+    Marks the frequency where CI overtakes ER as the dominant
+    driver of spread ("ER → CI handoff") and shades the ER-dominant
+    and CI-dominant frequency regions.
+
+    Args:
+        binned_df (pandas.DataFrame): Binned Δp data.
+        params (dict): Fitted analytical parameters.
+        outdir (str): Output directory.
+        dt (int): Time interval used for Δp.
+    """
     p_th = np.linspace(0.02, 0.98, 200)
 
     dp_ci = model_ci_asymmetric(p_th, params['A'], params['alpha'], params['gamma'])
@@ -590,199 +553,8 @@ def plot_overlay_figure(binned_df, params, outdir, dt):
                  fontweight='bold', pad=10)
     ax.legend(loc='upper left', fontsize=8, ncol=2)
 
-    apply_symlog_y(ax, binned_df)
-
     fig.tight_layout()
     save_fig(fig, os.path.join(outdir, 'delta_p_overlay'))
-
-
-# ======================================================================
-#  3D figure: p × N × Δp
-# ======================================================================
-
-def plot_delta_p_3d(dp_df, outdir, dt):
-    """
-    3D scatter: X = infection frequency, Y = population size, Z = Δp.
-    One colour per phenotype. Shows how both frequency AND population
-    size jointly determine the invasion rate.
-    """
-    if 'pop_size' not in dp_df.columns:
-        print("    [skip] 3D plot — no population size data")
-        return
-
-    from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
-
-    fig = plt.figure(figsize=(10, 7))
-    ax = fig.add_subplot(111, projection='3d')
-
-    for pheno in ['CI', 'ER', 'CI_ER']:
-        sub = dp_df[dp_df['Phenotype'] == pheno]
-        if len(sub) == 0:
-            continue
-        style = PHENO_STYLE[pheno]
-
-        # Subsample for readability (max 3000 points per phenotype)
-        if len(sub) > 3000:
-            sub = sub.sample(n=3000, random_state=42)
-
-        ax.scatter(
-            sub['p'], sub['pop_size'], sub['delta_p'],
-            c=style['color'], s=6, alpha=0.25, label=style['label'],
-            edgecolors='none', depthshade=True,
-        )
-
-    ax.set_xlabel('Infection frequency (p)', labelpad=10)
-    ax.set_ylabel('Population size (N)', labelpad=10)
-    ax.set_zlabel(f'Δp per {dt}-day interval', labelpad=10)
-    ax.set_title('Δp depends on both frequency and population size',
-                 fontweight='bold', pad=15)
-    ax.legend(loc='upper left', fontsize=8)
-
-    # Viewing angle: slightly elevated, rotated to show the CI ridge
-    ax.view_init(elev=25, azim=-50)
-
-    fig.tight_layout()
-    save_fig(fig, os.path.join(outdir, 'delta_p_3d'))
-
-
-# ======================================================================
-#  Δp vs population size overlay
-# ======================================================================
-
-def bin_delta_p_by_pop(dp_df, n_bins=20):
-    """Bin (N, Δp) by population size and compute summary stats."""
-    if 'pop_size' not in dp_df.columns:
-        return pd.DataFrame()
-
-    records = []
-    # Use log-spaced bins since population grows exponentially
-    pop_min = max(dp_df['pop_size'].min(), 10)
-    pop_max = dp_df['pop_size'].max()
-    bin_edges = np.logspace(np.log10(pop_min), np.log10(pop_max), n_bins + 1)
-    bin_mids = np.sqrt(bin_edges[:-1] * bin_edges[1:])  # geometric mean
-
-    for pheno in sorted(dp_df['Phenotype'].unique()):
-        sub = dp_df[dp_df['Phenotype'] == pheno]
-        for i in range(n_bins):
-            lo, hi = bin_edges[i], bin_edges[i + 1]
-            in_bin = sub[(sub['pop_size'] >= lo) & (sub['pop_size'] < hi)]
-            if len(in_bin) < 3:
-                continue
-            records.append({
-                'Phenotype': pheno,
-                'pop_mid': bin_mids[i],
-                'dp_median': in_bin['delta_p'].median(),
-                'dp_q25': in_bin['delta_p'].quantile(0.25),
-                'dp_q75': in_bin['delta_p'].quantile(0.75),
-                'n': len(in_bin),
-            })
-
-    return pd.DataFrame(records)
-
-
-def plot_delta_p_vs_pop(dp_df, outdir, dt, n_bins=20):
-    """
-    Overlay: Δp vs population size for CI, ER, CI+ER.
-    Reveals whether invasion rate depends on absolute population size
-    (e.g. ER advantage might scale with density, CI might not).
-    """
-    if 'pop_size' not in dp_df.columns:
-        print("    [skip] Δp vs N plot — no population size data")
-        return
-
-    binned_pop = bin_delta_p_by_pop(dp_df, n_bins=n_bins)
-    if len(binned_pop) == 0:
-        print("    [skip] Δp vs N plot — insufficient data")
-        return
-
-    fig, ax = plt.subplots(figsize=(8, 5))
-
-    for pheno in ['CI', 'ER', 'CI_ER']:
-        sub = binned_pop[binned_pop['Phenotype'] == pheno]
-        if len(sub) == 0:
-            continue
-        style = PHENO_STYLE[pheno]
-
-        ax.fill_between(sub['pop_mid'], sub['dp_q25'], sub['dp_q75'],
-                        alpha=0.15, color=style['color'], linewidth=0)
-        ax.plot(sub['pop_mid'], sub['dp_median'], 'o-',
-                color=style['color'], markersize=4, linewidth=1.5,
-                label=style['label'], zorder=4)
-
-    ax.axhline(0, color=COL_GREY, ls=':', lw=0.7, zorder=0)
-    ax.set_xscale('log')
-    ax.set_xlabel('Population size (N)')
-    ax.set_ylabel(f'Δp per {dt}-day interval')
-    ax.set_title('Invasion rate vs population size', fontweight='bold', pad=10)
-    ax.legend(loc='best', fontsize=9)
-
-    apply_symlog_y(ax, binned_pop)
-
-    fig.tight_layout()
-    save_fig(fig, os.path.join(outdir, 'delta_p_vs_pop'))
-
-    # Also save the binned CSV
-    binned_pop.to_csv(os.path.join(outdir, 'binned_delta_p_by_pop.csv'), index=False)
-    print(f"    ✓ binned_delta_p_by_pop.csv")
-
-
-# ======================================================================
-#  Comparison: 3 extraction methods side by side
-# ======================================================================
-
-def plot_method_comparison(binned_all, binned_asc, binned_init, params, outdir, dt):
-    """
-    3-panel comparison: all-data vs ascending-only vs initial-generation.
-    Same analytical curves in each, different ABM data.
-    Shows how the choice of extraction window affects the picture.
-    """
-    p_th = np.linspace(0.02, 0.98, 200)
-
-    dp_ci = model_ci_asymmetric(p_th, params['A'], params['alpha'], params['gamma'])
-    dp_er = model_er(p_th, params['s_0'], params['beta'])
-
-    datasets = [
-        (binned_all,  'All Δp (trajectory average)'),
-        (binned_asc,  'Ascending first-passage only'),
-        (binned_init, 'Initial generation only (Turelli)'),
-    ]
-
-    fig, axes = plt.subplots(1, 3, figsize=(16, 5), sharey=False)
-
-    for ax, (binned, panel_title) in zip(axes, datasets):
-        if binned is None or len(binned) == 0:
-            ax.set_title(panel_title + '\n(no data)', fontsize=10)
-            continue
-
-        # Plot ABM data for each phenotype
-        for pheno in ['CI', 'ER', 'CI_ER']:
-            sub = binned[binned['Phenotype'] == pheno]
-            if len(sub) == 0:
-                continue
-            style = PHENO_STYLE[pheno]
-            ax.fill_between(sub['p_mid'], sub['dp_q25'], sub['dp_q75'],
-                            alpha=0.15, color=style['color'], linewidth=0)
-            ax.plot(sub['p_mid'], sub['dp_median'], 'o-',
-                    color=style['color'], markersize=4, linewidth=1.5,
-                    label=style['label'], zorder=4)
-
-        # Theory curves (dashed, light)
-        ax.plot(p_th, dp_ci, '--', color=COL_CI, linewidth=1.2, alpha=0.5)
-        ax.plot(p_th, dp_er, '--', color=COL_ER, linewidth=1.2, alpha=0.5)
-
-        ax.axhline(0, color=COL_GREY, ls=':', lw=0.7, zorder=0)
-        ax.set_xlabel('Infection frequency (p)')
-        ax.set_xlim(0, 1)
-        ax.set_title(panel_title, fontweight='bold', fontsize=10)
-        ax.legend(loc='upper right', fontsize=7)
-        apply_symlog_y(ax, binned)
-
-    axes[0].set_ylabel(f'Δp per {dt}-day interval')
-
-    fig.suptitle('Extraction method comparison', fontsize=13,
-                 fontweight='bold', y=1.02)
-    fig.tight_layout()
-    save_fig(fig, os.path.join(outdir, 'delta_p_method_comparison'))
 
 
 # ======================================================================
@@ -790,47 +562,44 @@ def plot_method_comparison(binned_all, binned_asc, binned_init, params, outdir, 
 # ======================================================================
 
 def main():
+    """CLI entry point for the Δp figure generator.
+
+    Supports four modes via ``--mode``:
+        - ``all``: Full trajectory averaging (default).
+        - ``ascending``: First-passage, Δp > 0 only.
+        - ``initial``: One Δp per replicate (Turelli-correct).
+        - ``compare``: Run all three and produce comparison figure.
+    """
     parser = argparse.ArgumentParser(
         description="W.I.N.G.S. — Δp vs p figure generator")
     parser.add_argument('--input', required=True,
                         help='Combined CSV from ingest_delta_p.py')
     parser.add_argument('--outdir', default='figures_delta_p',
                         help='Output directory')
-    parser.add_argument('--dt', type=int, default=24,
-                        help='Δt in days — use 24 for T. confusum generation (default: 24)')
+    parser.add_argument('--dt', type=int, default=7,
+                        help='Δt in days (default: 7)')
     parser.add_argument('--n-bins', type=int, default=20,
                         help='Number of frequency bins (default: 20)')
-    parser.add_argument('--mode', default='all',
-                        choices=['all', 'ascending', 'initial', 'compare'],
-                        help='Extraction mode: all (trajectory avg), ascending '
-                             '(first-passage Δp>0), initial (one Δp per rep, '
-                             'Turelli-correct), compare (run all 3 side-by-side)')
+    parser.add_argument('--ascending-only', action='store_true',
+                        help='Only use ascending (Δp > 0) first-passage data')
     # Manual overrides
     parser.add_argument('--A', type=float, default=None, help='CI amplitude')
     parser.add_argument('--alpha', type=float, default=None, help='CI left exponent')
     parser.add_argument('--gamma', type=float, default=None, help='CI right exponent')
     parser.add_argument('--s-0', type=float, default=None, help='ER base advantage')
     parser.add_argument('--beta', type=float, default=None, help='ER decay exponent')
-    parser.add_argument('--semilogy', action='store_true',
-                        help='Use symmetric-log y-axis (log scale that handles '
-                             'zero/negative values via linear region around 0)')
     args = parser.parse_args()
-
-    # Set module-level flag
-    global USE_SYMLOG_Y
-    USE_SYMLOG_Y = args.semilogy
 
     os.makedirs(args.outdir, exist_ok=True)
 
-    print("=" * 60)
+    print("=" * 56)
     print("  W.I.N.G.S. — Δp Figure Generator")
-    print("=" * 60)
+    print("=" * 56)
     print(f"  Input:      {args.input}")
     print(f"  Output:     {args.outdir}/")
     print(f"  Δt:         {args.dt} days")
     print(f"  Bins:       {args.n_bins}")
-    print(f"  Mode:       {args.mode}")
-    print(f"  Semilogy:   {args.semilogy}")
+    print(f"  Ascending:  {args.ascending_only}")
 
     df = pd.read_csv(args.input)
     time_col, inf_col = detect_columns(df)
@@ -843,129 +612,50 @@ def main():
     print(f"  Fractions:  {len(fractions)} ({min(fractions):.2f}–{max(fractions):.2f})")
     print()
 
-    # =================================================================
-    #  Extract Δp — depends on mode
-    # =================================================================
+    # --- Extract Δp ---
+    print("  Extracting Δp...")
+    dp_df = extract_delta_p(df, time_col, inf_col,
+                            dt=args.dt, ascending_only=args.ascending_only)
+    print(f"  → {len(dp_df):,} (p, Δp) data points")
 
-    if args.mode == 'compare':
-        # Run ALL three methods and produce comparison figure
-        print("  ── Mode: COMPARE (all 3 extraction methods) ──")
+    if len(dp_df) == 0:
+        print("\n  ERROR: No valid Δp data! Check time series have data "
+              "after day 23 with 0.01 < p < 0.99")
+        sys.exit(1)
 
-        print("\n  [1/3] All-data extraction...")
-        dp_all = extract_delta_p(df, time_col, inf_col,
-                                 dt=args.dt, ascending_only=False)
-        print(f"        → {len(dp_all):,} points")
-        binned_all = bin_delta_p(dp_all, n_bins=args.n_bins) if len(dp_all) > 0 else pd.DataFrame()
+    # --- Bin ---
+    print("  Binning...")
+    binned = bin_delta_p(dp_df, n_bins=args.n_bins)
+    for pheno in phenotypes:
+        n = len(binned[binned['Phenotype'] == pheno])
+        print(f"    {pheno}: {n} bins")
 
-        print("\n  [2/3] Ascending first-passage extraction...")
-        dp_asc = extract_delta_p(df, time_col, inf_col,
-                                 dt=args.dt, ascending_only=True)
-        print(f"        → {len(dp_asc):,} points")
-        binned_asc = bin_delta_p(dp_asc, n_bins=args.n_bins) if len(dp_asc) > 0 else pd.DataFrame()
+    # --- Fit ---
+    print("\n  Fitting analytical models...")
+    params = fit_analytical(binned)
 
-        print("\n  [3/3] Initial-generation extraction (Turelli)...")
-        dp_init = extract_delta_p_initial(df, time_col, inf_col, dt=args.dt)
-        print(f"        → {len(dp_init):,} points (one per replicate)")
-        binned_init = bin_delta_p(dp_init, n_bins=args.n_bins) if len(dp_init) > 0 else pd.DataFrame()
+    # Overrides
+    for key, arg_val in [('A', args.A), ('alpha', args.alpha), ('gamma', args.gamma),
+                          ('s_0', args.s_0), ('beta', args.beta)]:
+        if arg_val is not None:
+            params[key] = arg_val
+            print(f"  [override] {key} = {arg_val}")
 
-        # Fit on all-data (most data, best fit)
-        print("\n  Fitting analytical models (on all-data)...")
-        params = fit_analytical(binned_all)
+    # --- Save intermediates ---
+    dp_df.to_csv(os.path.join(args.outdir, 'raw_delta_p.csv'), index=False)
+    binned.to_csv(os.path.join(args.outdir, 'binned_delta_p.csv'), index=False)
+    with open(os.path.join(args.outdir, 'fitted_params.txt'), 'w') as f:
+        for k, v in sorted(params.items()):
+            f.write(f"{k} = {v}\n")
+    print(f"\n  Saved: raw_delta_p.csv, binned_delta_p.csv, fitted_params.txt")
 
-        # Also fit on initial-generation for comparison
-        print("  Fitting analytical models (on initial-generation)...")
-        params_init = fit_analytical(binned_init)
-
-        # Save all intermediates
-        for name, data in [('raw_delta_p_all', dp_all),
-                           ('raw_delta_p_ascending', dp_asc),
-                           ('raw_delta_p_initial', dp_init),
-                           ('binned_delta_p_all', binned_all),
-                           ('binned_delta_p_ascending', binned_asc),
-                           ('binned_delta_p_initial', binned_init)]:
-            if len(data) > 0:
-                data.to_csv(os.path.join(args.outdir, f'{name}.csv'), index=False)
-
-        with open(os.path.join(args.outdir, 'fitted_params_all.txt'), 'w') as f:
-            for k, v in sorted(params.items()):
-                f.write(f"{k} = {v}\n")
-        with open(os.path.join(args.outdir, 'fitted_params_initial.txt'), 'w') as f:
-            for k, v in sorted(params_init.items()):
-                f.write(f"{k} = {v}\n")
-
-        # Use all-data for the primary figures, initial for comparison
-        dp_df = dp_all
-        binned = binned_all
-
-        # Apply overrides
-        for key, arg_val in [('A', args.A), ('alpha', args.alpha), ('gamma', args.gamma),
-                              ('s_0', args.s_0), ('beta', args.beta)]:
-            if arg_val is not None:
-                params[key] = arg_val
-
-        print("\n  Generating figures (PNG + SVG)...")
-        plot_delta_p_figure(binned, params, args.outdir, args.dt)
-        plot_overlay_figure(binned, params, args.outdir, args.dt)
-        plot_delta_p_3d(dp_df, args.outdir, args.dt)
-        plot_delta_p_vs_pop(dp_df, args.outdir, args.dt, n_bins=args.n_bins)
-
-        # Comparison figure
-        plot_method_comparison(binned_all, binned_asc, binned_init,
-                               params, args.outdir, args.dt)
-
-        # Extra: initial-generation overlay with its own fit
-        init_dir = os.path.join(args.outdir, 'initial')
-        os.makedirs(init_dir, exist_ok=True)
-        plot_overlay_figure(binned_init, params_init, init_dir, args.dt)
-
-    else:
-        # Single mode
-        if args.mode == 'initial':
-            print("  ── Mode: INITIAL (one Δp per replicate, Turelli-correct) ──")
-            dp_df = extract_delta_p_initial(df, time_col, inf_col, dt=args.dt)
-        elif args.mode == 'ascending':
-            print("  ── Mode: ASCENDING (first-passage, Δp > 0 only) ──")
-            dp_df = extract_delta_p(df, time_col, inf_col,
-                                    dt=args.dt, ascending_only=True)
-        else:
-            print("  ── Mode: ALL (full trajectory average) ──")
-            dp_df = extract_delta_p(df, time_col, inf_col,
-                                    dt=args.dt, ascending_only=False)
-
-        print(f"  → {len(dp_df):,} (p, Δp) data points")
-
-        if len(dp_df) == 0:
-            print("\n  ERROR: No valid Δp data!")
-            sys.exit(1)
-
-        binned = bin_delta_p(dp_df, n_bins=args.n_bins)
-        for pheno in phenotypes:
-            n = len(binned[binned['Phenotype'] == pheno])
-            print(f"    {pheno}: {n} bins")
-
-        print("\n  Fitting analytical models...")
-        params = fit_analytical(binned)
-
-        for key, arg_val in [('A', args.A), ('alpha', args.alpha), ('gamma', args.gamma),
-                              ('s_0', args.s_0), ('beta', args.beta)]:
-            if arg_val is not None:
-                params[key] = arg_val
-                print(f"  [override] {key} = {arg_val}")
-
-        dp_df.to_csv(os.path.join(args.outdir, 'raw_delta_p.csv'), index=False)
-        binned.to_csv(os.path.join(args.outdir, 'binned_delta_p.csv'), index=False)
-        with open(os.path.join(args.outdir, 'fitted_params.txt'), 'w') as f:
-            for k, v in sorted(params.items()):
-                f.write(f"{k} = {v}\n")
-
-        print("\n  Generating figures (PNG + SVG)...")
-        plot_delta_p_figure(binned, params, args.outdir, args.dt)
-        plot_overlay_figure(binned, params, args.outdir, args.dt)
-        plot_delta_p_3d(dp_df, args.outdir, args.dt)
-        plot_delta_p_vs_pop(dp_df, args.outdir, args.dt, n_bins=args.n_bins)
+    # --- Plot ---
+    print("\n  Generating figures (PNG + SVG)...")
+    plot_delta_p_figure(binned, params, args.outdir, args.dt)
+    plot_overlay_figure(binned, params, args.outdir, args.dt)
 
     print(f"\n  Done — figures in {args.outdir}/")
-    print("=" * 60)
+    print("=" * 56)
 
 
 if __name__ == '__main__':

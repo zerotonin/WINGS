@@ -2,25 +2,43 @@ import random
 from .beetle import Beetle
 
 class Reproduction:
-    """
-    Handles the reproduction process for beetles, including Wolbachia effects like CI and male-killing.
+    """Handles beetle mating, offspring production, and *Wolbachia* effects.
+
+    Implements cytoplasmic incompatibility (CI), male killing (MK),
+    increased egg laying (IE), and reduced egg laying (RE) as
+    modular toggles on the reproduction pipeline.
+
     Attributes:
-        grid_size (int): Size of the environment grid.
-        wolbachia_effects (dict): Active Wolbachia effect toggles.
+        grid_size (int): Side length of the simulation grid.
+        wolbachia_effects (dict): Boolean toggles for each effect.
         environment (Environment): Reference to the simulation environment.
-        egg_laying_max (int): Max number of eggs a female can lay at once.
+        egg_laying_max (int): Maximum eggs per clutch (default: 15).
     """
     def __init__(self, environment):
+        """Initialise the reproduction handler.
+
+        Args:
+            environment (Environment): The simulation environment,
+                from which grid size and effect toggles are read.
+        """
         self.grid_size = environment.grid_size
         self.wolbachia_effects = environment.wolbachia_effects
         self.environment = environment
         self.egg_laying_max = 15
 
     def mate(self, female, male):
-        """
-        Facilitates mating between a female and male beetle, returning offspring (eggs).
-        Applies cytoplasmic incompatibility (CI) if active.
-        Returns a list of offspring (Beetle objects with age 0) or an empty list if no eggs survive.
+        """Attempt mating between a female and a male beetle.
+
+        Applies CI logic: if the male is infected and the female is
+        not, offspring viability is reduced by ``ci_strength``.
+
+        Args:
+            female (Beetle): The female beetle.
+            male (Beetle): The male beetle.
+
+        Returns:
+            list[Beetle]: Offspring beetles (may be empty if CI
+            kills the brood or population cap is reached).
         """
         # Only allow female-male pairings
         if female.sex != 'female' or male.sex != 'male':
