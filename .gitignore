@@ -1,6 +1,24 @@
-__pycache__/*
-figures*/*
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# Data (large CSVs not in repo)
+data/*.csv
 *.csv
+
+# Figures (regenerated from data)
+figures*/
 *.log
-scripts/__pycache__/*
-.vscode/*
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db

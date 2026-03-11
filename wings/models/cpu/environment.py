@@ -1,5 +1,5 @@
-from Reproduction import Reproduction
-from Beetle import Beetle
+from .reproduction import Reproduction
+from .beetle import Beetle
 import numpy as np
 import random
 

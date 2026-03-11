@@ -52,7 +52,7 @@
 # --- Paths ---
 PROJECT_DIR="/projects/sciences/zoology/geurten_lab/wolbachia_spread_model"
 CODE_DIR="/home/geuba03p/PyProjects/WINGS"
-SCRIPT="${CODE_DIR}/gpu/gpu_simulation.py"
+SCRIPT="${CODE_DIR}/wings/models/gpu_abm.py"
 OUTDIR="${PROJECT_DIR}/abm_init05"
 
 # --- Configuration ---

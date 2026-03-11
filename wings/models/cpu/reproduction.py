@@ -1,5 +1,5 @@
 import random
-from Beetle import Beetle
+from .beetle import Beetle
 
 class Reproduction:
     """

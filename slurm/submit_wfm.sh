@@ -26,7 +26,7 @@
 # ============================================================
 
 CODE_DIR="/home/geuba03p/PyProjects/WINGS"
-SCRIPT="${CODE_DIR}/gpu/fixed_generation_sim.py"
+SCRIPT="${CODE_DIR}/wings/models/wfm.py"
 OUTDIR="/projects/sciences/zoology/geurten_lab/wolbachia_spread_model/gpu_results_50beetles"
 NREPS=${NREPS:-200}
 

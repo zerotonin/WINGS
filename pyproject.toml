@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "wings"
+version = "0.2.0"
+description = "Wolbachia Infection Numerical Growth Simulation"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.9"
+authors = [
+    {name = "Bart Geurten"},
+    {name = "Christoph Bleidorn"},
+    {name = "Yeganeh Zare"},
+]
+dependencies = [
+    "numpy",
+    "pandas",
+    "matplotlib",
+    "tqdm",
+    "scipy",
+]
+
+[project.optional-dependencies]
+gpu = ["torch>=2.0"]
+dev = ["seaborn", "pytest"]
+
+[tool.setuptools.packages.find]
+include = ["wings*"]
