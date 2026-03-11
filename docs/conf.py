@@ -10,8 +10,8 @@ sys.path.insert(0, os.path.abspath(".."))
 # -- Project information -----------------------------------------------------
 
 project = "W.I.N.G.S."
-copyright = "2025, Bart Geurten, Christoph Bleidorn, Yeganeh Zare"
-author = "Bart Geurten, Christoph Bleidorn, Yeganeh Zare"
+copyright = "2025, Yeganeh Gharabigloozare, Christoph Bleidorn, Bart Geurten"
+author = "Yeganeh Gharabigloozare, Christoph Bleidorn, Bart Geurten"
 release = "0.2.0"
 
 # -- General configuration ---------------------------------------------------
@@ -36,6 +36,10 @@ napoleon_include_special_with_doc = True
 napoleon_use_admonition_for_examples = True
 napoleon_use_admonition_for_notes = True
 napoleon_use_admonition_for_references = True
+
+# Mock imports for optional dependencies not available in CI/docs builds
+# This lets Sphinx parse gpu_abm.py without torch installed
+autodoc_mock_imports = ["torch"]
 
 # Autodoc settings
 autodoc_default_options = {

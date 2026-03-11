@@ -12,7 +12,7 @@ requires-python = ">=3.9"
 authors = [
     {name = "Bart Geurten", email = "bart.geurten@otago.ac.nz"},
     {name = "Christoph Bleidorn"},
-    {name = "Yeganeh Zare"},
+    {name = "Yeganeh Gharabigloozare"},
 ]
 keywords = ["wolbachia", "agent-based-model", "tribolium", "population-genetics", "cytoplasmic-incompatibility"]
 classifiers = [
