@@ -1,6 +1,5 @@
 # W.I.N.G.S. — Wolbachia Infection Numerical Growth Simulation
 
-![WINGS Logo](images/wingsLogo.png)
 
 [![Documentation](https://img.shields.io/badge/docs-GitHub%20Pages-blue)](https://zerotonin.github.io/WINGS)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE.md)
