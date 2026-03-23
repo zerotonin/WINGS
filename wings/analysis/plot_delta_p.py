@@ -419,18 +419,34 @@ def plot_delta_p_figure(binned_df, params, outdir, dt):
     """
     p_th = np.linspace(0.02, 0.98, 200)
 
-    theory = {
-        'CI':    model_ci_asymmetric(p_th, params['A'], params['alpha'], params['gamma']),
-        'ER':    model_er(p_th, params['s_0'], params['beta']),
-        'CI_ER': (model_ci_asymmetric(p_th, params['A'], params['alpha'], params['gamma'])
-                  + model_er(p_th, params['s_0'], params['beta'])),
-    }
-    titles = {'CI': 'CI only', 'ER': 'ER only', 'CI_ER': 'CI + ER'}
+    # Build theory curves and titles only for available phenotypes
+    all_theory = {}
+    all_titles = {}
+    if 'A' in params:
+        all_theory['CI'] = model_ci_asymmetric(p_th, params['A'], params['alpha'], params['gamma'])
+        all_titles['CI'] = 'CI only'
+    if 's_0' in params:
+        all_theory['ER'] = model_er(p_th, params['s_0'], params['beta'])
+        all_titles['ER'] = 'ER only'
+    if 'A' in params and 's_0' in params:
+        all_theory['CI_ER'] = (model_ci_asymmetric(p_th, params['A'], params['alpha'], params['gamma'])
+                               + model_er(p_th, params['s_0'], params['beta']))
+        all_titles['CI_ER'] = 'CI + ER'
 
-    fig, axes = plt.subplots(1, 3, figsize=(14, 4.5), sharey=True)
+    # Only plot panels for phenotypes present in data or theory
+    available = sorted(set(binned_df['Phenotype'].unique()) | set(all_theory.keys()),
+                       key=lambda x: ['CI', 'ER', 'CI_ER'].index(x) if x in ['CI', 'ER', 'CI_ER'] else 99)
+    if not available:
+        print("    [skip] delta_p_vs_p — no phenotypes to plot")
+        return
 
-    for ax, pheno in zip(axes, ['CI', 'ER', 'CI_ER']):
-        color = PHENO_STYLE[pheno]['color']
+    n_panels = len(available)
+    fig, axes = plt.subplots(1, n_panels, figsize=(4.7 * n_panels, 4.5), sharey=True)
+    if n_panels == 1:
+        axes = [axes]
+
+    for ax, pheno in zip(axes, available):
+        color = PHENO_STYLE.get(pheno, {'color': COL_GREY})['color']
 
         # ABM data
         sub = binned_df[binned_df['Phenotype'] == pheno]
@@ -441,14 +457,15 @@ def plot_delta_p_figure(binned_df, params, outdir, dt):
                     markersize=4, linewidth=1.5, label='ABM median', zorder=4)
 
         # Theory
-        ax.plot(p_th, theory[pheno], '--', color='#333333', linewidth=2.0,
-                alpha=0.7, label='Analytical', zorder=5)
+        if pheno in all_theory:
+            ax.plot(p_th, all_theory[pheno], '--', color='#333333', linewidth=2.0,
+                    alpha=0.7, label='Analytical', zorder=5)
 
         ax.axhline(0, color=COL_GREY, ls=':', lw=0.7, zorder=0)
 
         # Unstable equilibrium (zero-crossing) for CI panels
-        if pheno in ('CI', 'CI_ER'):
-            dp = theory[pheno]
+        if pheno in ('CI', 'CI_ER') and pheno in all_theory:
+            dp = all_theory[pheno]
             crossings = np.where(np.diff(np.sign(dp)))[0]
             for idx in crossings:
                 p_eq = p_th[idx]
@@ -458,7 +475,7 @@ def plot_delta_p_figure(binned_df, params, outdir, dt):
                             fontsize=7, color=color, va='bottom')
 
         ax.set_xlabel('Infection frequency (p)')
-        ax.set_title(titles[pheno], fontweight='bold', color=color)
+        ax.set_title(all_titles.get(pheno, pheno), fontweight='bold', color=color)
         ax.legend(loc='upper right', fontsize=7.5)
         ax.set_xlim(0, 1)
 
@@ -497,53 +514,62 @@ def plot_overlay_figure(binned_df, params, outdir, dt):
     """
     p_th = np.linspace(0.02, 0.98, 200)
 
-    dp_ci = model_ci_asymmetric(p_th, params['A'], params['alpha'], params['gamma'])
-    dp_er = model_er(p_th, params['s_0'], params['beta'])
-    dp_cier = dp_ci + dp_er
+    has_ci = 'A' in params
+    has_er = 's_0' in params
 
     fig, ax = plt.subplots(figsize=(7, 5))
 
-    ax.plot(p_th, dp_ci, '-', color=COL_CI, linewidth=2.2, label='CI (theory)')
-    ax.plot(p_th, dp_er, '-', color=COL_ER, linewidth=2.2, label='ER (theory)')
-    ax.plot(p_th, dp_cier, '-', color=COL_CIER, linewidth=2.2, label='CI+ER (theory)')
+    # Theory curves — only plot what's available
+    dp_ci = dp_er = dp_cier = None
+    if has_ci:
+        dp_ci = model_ci_asymmetric(p_th, params['A'], params['alpha'], params['gamma'])
+        ax.plot(p_th, dp_ci, '-', color=COL_CI, linewidth=2.2, label='CI (theory)')
+    if has_er:
+        dp_er = model_er(p_th, params['s_0'], params['beta'])
+        ax.plot(p_th, dp_er, '-', color=COL_ER, linewidth=2.2, label='ER (theory)')
+    if has_ci and has_er:
+        dp_cier = dp_ci + dp_er
+        ax.plot(p_th, dp_cier, '-', color=COL_CIER, linewidth=2.2, label='CI+ER (theory)')
 
-    # ABM scatter
+    # ABM scatter — only phenotypes present in data
     for pheno in ['CI', 'ER', 'CI_ER']:
         sub = binned_df[binned_df['Phenotype'] == pheno]
         if len(sub) == 0:
             continue
-        style = PHENO_STYLE[pheno]
+        style = PHENO_STYLE.get(pheno, {'color': COL_GREY, 'label': pheno})
         ax.scatter(sub['p_mid'], sub['dp_median'], color=style['color'],
                    s=30, alpha=0.6, zorder=3, edgecolors='white', linewidths=0.4,
                    label=f'{style["label"]} (ABM)')
 
-    # Crossing point
-    diff = dp_ci - dp_er
-    sign_changes = np.where(np.diff(np.sign(diff)))[0]
-    for idx in sign_changes:
-        p_cross = p_th[idx]
-        dp_cross = dp_ci[idx]
-        if 0.03 < p_cross < 0.97:
-            ax.plot(p_cross, dp_cross, 'k*', markersize=12, zorder=6)
-            ax.annotate(
-                f'p = {p_cross:.2f}\nER → CI handoff',
-                xy=(p_cross, dp_cross),
-                xytext=(p_cross + 0.10, dp_cross + max(0.0005, dp_cross * 0.3)),
-                fontsize=8.5, ha='left',
-                arrowprops=dict(arrowstyle='->', color='#555555', lw=0.8),
-                color='#333333')
+    # Crossing point — only if both CI and ER are present
+    # Crossing point — only if both CI and ER are present
+    if dp_ci is not None and dp_er is not None:
+        diff = dp_ci - dp_er
+        sign_changes = np.where(np.diff(np.sign(diff)))[0]
+        for idx in sign_changes:
+            p_cross = p_th[idx]
+            dp_cross = dp_ci[idx]
+            if 0.03 < p_cross < 0.97:
+                ax.plot(p_cross, dp_cross, 'k*', markersize=12, zorder=6)
+                ax.annotate(
+                    f'p = {p_cross:.2f}\nER → CI handoff',
+                    xy=(p_cross, dp_cross),
+                    xytext=(p_cross + 0.10, dp_cross + max(0.0005, dp_cross * 0.3)),
+                    fontsize=8.5, ha='left',
+                    arrowprops=dict(arrowstyle='->', color='#555555', lw=0.8),
+                    color='#333333')
 
-    # Shaded regions
-    if len(sign_changes) > 0:
-        p_cross = p_th[sign_changes[0]]
-        ax.axvspan(0, p_cross, alpha=0.04, color=COL_ER, zorder=0)
-        ax.axvspan(p_cross, 1, alpha=0.04, color=COL_CI, zorder=0)
-        y_top = ax.get_ylim()[1]
-        y_label = y_top * 0.85 if y_top > 0.001 else 0.001
-        ax.text(p_cross / 2, y_label, 'ER dominant', fontsize=9,
-                ha='center', color=COL_ER, alpha=0.8, fontstyle='italic')
-        ax.text((1 + p_cross) / 2, y_label, 'CI dominant', fontsize=9,
-                ha='center', color=COL_CI, alpha=0.8, fontstyle='italic')
+        # Shaded regions
+        if len(sign_changes) > 0:
+            p_cross = p_th[sign_changes[0]]
+            ax.axvspan(0, p_cross, alpha=0.04, color=COL_ER, zorder=0)
+            ax.axvspan(p_cross, 1, alpha=0.04, color=COL_CI, zorder=0)
+            y_top = ax.get_ylim()[1]
+            y_label = y_top * 0.85 if y_top > 0.001 else 0.001
+            ax.text(p_cross / 2, y_label, 'ER dominant', fontsize=9,
+                    ha='center', color=COL_ER, alpha=0.8, fontstyle='italic')
+            ax.text((1 + p_cross) / 2, y_label, 'CI dominant', fontsize=9,
+                    ha='center', color=COL_CI, alpha=0.8, fontstyle='italic')
 
     ax.axhline(0, color=COL_GREY, ls=':', lw=0.7, zorder=0)
     ax.set_xlabel('Infection frequency (p)')
@@ -588,7 +614,23 @@ def main():
     parser.add_argument('--gamma', type=float, default=None, help='CI right exponent')
     parser.add_argument('--s-0', type=float, default=None, help='ER base advantage')
     parser.add_argument('--beta', type=float, default=None, help='ER decay exponent')
+    parser.add_argument('--exclude', default=None,
+                        help='Comma-separated Wolbachia mechanics to exclude. '
+                             'Valid: CI, MK, ER, IE.  Phenotypes using excluded '
+                             'mechanics are removed from all figures.  '
+                             'Example: --exclude MK or --exclude MK,IE')
     args = parser.parse_args()
+
+    # Parse exclusion list
+    excluded = set()
+    if args.exclude:
+        excluded = {s.strip().upper() for s in args.exclude.split(",")}
+        valid = {"CI", "MK", "ER", "IE"}
+        unknown = excluded - valid
+        if unknown:
+            print(f"  ERROR: Unknown mechanic(s): {unknown}")
+            print(f"  Valid options: {', '.join(sorted(valid))}")
+            sys.exit(1)
 
     os.makedirs(args.outdir, exist_ok=True)
 
@@ -600,11 +642,31 @@ def main():
     print(f"  Δt:         {args.dt} days")
     print(f"  Bins:       {args.n_bins}")
     print(f"  Ascending:  {args.ascending_only}")
+    if excluded:
+        print(f"  Exclude:    {', '.join(sorted(excluded))}")
 
     df = pd.read_csv(args.input)
     time_col, inf_col = detect_columns(df)
     print(f"  Columns:    time='{time_col}', infection='{inf_col}'")
     print(f"  Rows:       {len(df):,}")
+
+    # Filter out phenotypes that use excluded mechanics
+    if excluded:
+        # Map mechanic abbreviations to phenotype label components
+        # Phenotype labels in sweep data: CI, ER, CI_ER
+        def _pheno_uses_excluded(pheno_label):
+            parts = set(pheno_label.split('_'))
+            return bool(parts & excluded)
+        before = len(df['Phenotype'].unique())
+        keep_phenos = [p for p in df['Phenotype'].unique()
+                       if not _pheno_uses_excluded(p)]
+        df = df[df['Phenotype'].isin(keep_phenos)]
+        after = len(keep_phenos)
+        print(f"  Filtered:   {before} → {after} phenotypes "
+              f"(kept: {', '.join(sorted(keep_phenos)) or 'none'})")
+        if len(df) == 0:
+            print("\n  ERROR: All phenotypes excluded — nothing to plot!")
+            sys.exit(1)
 
     phenotypes = sorted(df['Phenotype'].unique())
     fractions = sorted(df['Infected Fraction'].unique())
@@ -660,3 +722,5 @@ def main():
 
 if __name__ == '__main__':
     main()
+
+#Example usage: python -m wings.analysis.plot_delta_p --input data/combined_delta_p.csv --dt 24 

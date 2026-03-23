@@ -166,6 +166,86 @@ SUBSET_B = [
     (True,  True,  True,  True),   # CI+MK+ER+IE
 ]
 
+# Map mechanic abbreviations to their position in the (ci, mk, er, ie) tuple
+MECHANIC_INDEX = {"CI": 0, "MK": 1, "ER": 2, "IE": 3}
+
+
+def parse_exclude(exclude_str):
+    """Parse a comma-separated exclusion string into a set of mechanic names.
+
+    Args:
+        exclude_str (str or None): Comma-separated mechanic abbreviations,
+            e.g. ``"MK"`` or ``"MK,IE"``.  Case-insensitive.
+
+    Returns:
+        set[str]: Uppercase mechanic abbreviations to exclude.
+
+    Raises:
+        SystemExit: If an unrecognised abbreviation is provided.
+    """
+    if not exclude_str:
+        return set()
+    names = {s.strip().upper() for s in exclude_str.split(",")}
+    unknown = names - set(MECHANIC_INDEX.keys())
+    if unknown:
+        print(f"  ERROR: Unknown mechanic(s): {unknown}")
+        print(f"  Valid options: {', '.join(sorted(MECHANIC_INDEX.keys()))}")
+        import sys; sys.exit(1)
+    return names
+
+
+def filter_subset_by_exclusion(subset, excluded):
+    """Remove combos from a subset that use any excluded mechanic.
+
+    Args:
+        subset (list[tuple]): List of ``(ci, mk, er, ie)`` boolean tuples.
+        excluded (set[str]): Mechanic abbreviations to exclude (e.g. ``{"MK"}``).
+
+    Returns:
+        list[tuple]: Filtered subset with excluded combos removed.
+    """
+    if not excluded:
+        return subset
+    filtered = []
+    for combo in subset:
+        dominated = any(combo[MECHANIC_INDEX[m]] for m in excluded)
+        if not dominated:
+            filtered.append(combo)
+    return filtered
+
+
+def filter_heatmap_configs(row_configs, col_configs, excluded):
+    """Remove heatmap rows/columns that contain an excluded mechanic.
+
+    Args:
+        row_configs (list[tuple]): Row definitions ``(ci, mk, label)``.
+        col_configs (list[tuple]): Column definitions ``(er, ie, label)``.
+        excluded (set[str]): Mechanic abbreviations to exclude.
+
+    Returns:
+        tuple[list, list]: Filtered ``(row_configs, col_configs)``.
+    """
+    if not excluded:
+        return row_configs, col_configs
+
+    filt_rows = []
+    for ci, mk, label in row_configs:
+        if "CI" in excluded and ci:
+            continue
+        if "MK" in excluded and mk:
+            continue
+        filt_rows.append((ci, mk, label))
+
+    filt_cols = []
+    for er, ie, label in col_configs:
+        if "ER" in excluded and er:
+            continue
+        if "IE" in excluded and ie:
+            continue
+        filt_cols.append((er, ie, label))
+
+    return filt_rows, filt_cols
+
 
 # ======================================================================
 #  Helpers
@@ -702,11 +782,12 @@ def plot_time_to_fixation(
 
 def plot_heatmap(df, metric_func, cmap, cbar_label, title, path_stem,
                  time_col="Day", fmt=".2f", vmin=None, vmax=None,
-                 csv_raw_func=None, csv_value_col="value"):
-    """4×4 heatmap of all 16 effect combinations.
+                 csv_raw_func=None, csv_value_col="value", excluded=None):
+    """Heatmap of effect combinations, with optional mechanic exclusion.
 
-    Rows represent CI × MK axis (—, MK, CI, CI+MK).
-    Columns represent ER × IE axis (—, IE, ER, ER+IE).
+    Rows represent the CI × MK axis; columns represent the ER × IE axis.
+    When mechanics are excluded via ``excluded``, the corresponding rows
+    or columns are removed and the heatmap shrinks accordingly.
 
     Args:
         df (pandas.DataFrame): Simulation data.
@@ -722,7 +803,11 @@ def plot_heatmap(df, metric_func, cmap, cbar_label, title, path_stem,
         vmax (float, optional): Colourmap maximum.
         csv_raw_func (callable, optional): Per-replicate extraction
             function for CSV export.
+        excluded (set[str], optional): Mechanic abbreviations to exclude.
     """
+    if excluded is None:
+        excluded = set()
+
     row_configs = [
         (False, False, "—"),
         (False, True,  "MK"),
@@ -736,8 +821,18 @@ def plot_heatmap(df, metric_func, cmap, cbar_label, title, path_stem,
         (True,  True,  "ER+IE"),
     ]
 
-    matrix = np.full((4, 4), np.nan)
-    annot = np.empty((4, 4), dtype=object)
+    row_configs, col_configs = filter_heatmap_configs(
+        row_configs, col_configs, excluded)
+
+    n_rows = len(row_configs)
+    n_cols = len(col_configs)
+
+    if n_rows == 0 or n_cols == 0:
+        print(f"    [skip] {Path(path_stem).name} — all rows or columns excluded")
+        return
+
+    matrix = np.full((n_rows, n_cols), np.nan)
+    annot = np.empty((n_rows, n_cols), dtype=object)
 
     for ri, (r_ci, r_mk, _) in enumerate(row_configs):
         for ci_col, (c_er, c_ie, _) in enumerate(col_configs):
@@ -754,15 +849,15 @@ def plot_heatmap(df, metric_func, cmap, cbar_label, title, path_stem,
             matrix[ri, ci_col] = val
             annot[ri, ci_col] = "—" if np.isnan(val) else f"{val:{fmt}}"
 
-    fig, ax = plt.subplots(figsize=(5.5, 4.5))
+    fig, ax = plt.subplots(figsize=(max(3.5, 1.4 * n_cols + 1.5), max(3, 1.1 * n_rows + 1.5)))
 
     # Use explicit vmin/vmax so we can judge text colour
     v0 = vmin if vmin is not None else np.nanmin(matrix)
     v1 = vmax if vmax is not None else np.nanmax(matrix)
     im = ax.imshow(matrix, cmap=cmap, aspect="auto", vmin=v0, vmax=v1)
 
-    for ri in range(4):
-        for ci_col in range(4):
+    for ri in range(n_rows):
+        for ci_col in range(n_cols):
             val = matrix[ri, ci_col]
             # Text colour: white on dark cells, black on light
             if np.isnan(val):
@@ -776,9 +871,9 @@ def plot_heatmap(df, metric_func, cmap, cbar_label, title, path_stem,
                 color=tc,
             )
 
-    ax.set_xticks(range(4))
+    ax.set_xticks(range(n_cols))
     ax.set_xticklabels([c[2] for c in col_configs])
-    ax.set_yticks(range(4))
+    ax.set_yticks(range(n_rows))
     ax.set_yticklabels([r[2] for r in row_configs])
     ax.set_xlabel("Exploration / Fecundity axis", fontsize=10)
     ax.set_ylabel("CI / MK axis", fontsize=10)
@@ -912,7 +1007,7 @@ def raw_final_infected_count(df_sub, time_col):
 #  Main figure generation pipeline
 # ======================================================================
 
-def generate_figures(df, model, outdir, time_col="Day"):
+def generate_figures(df, model, outdir, time_col="Day", excluded=None):
     """Generate the complete set of publication figures for one model.
 
     Produces time series, strip plots, violin plots, and heatmaps
@@ -924,7 +1019,12 @@ def generate_figures(df, model, outdir, time_col="Day"):
         model (str): ``"abm"`` or ``"wfm"``.
         outdir (str): Output directory for figures.
         time_col (str): Time column. Defaults to ``"Day"``.
+        excluded (set[str], optional): Mechanic abbreviations to exclude
+            (e.g. ``{"MK"}``).  Combos using excluded mechanics are
+            removed from subsets, and heatmap rows/columns are pruned.
     """
+    if excluded is None:
+        excluded = set()
     is_abm = (model == "abm")
     os.makedirs(outdir, exist_ok=True)
 
@@ -933,12 +1033,18 @@ def generate_figures(df, model, outdir, time_col="Day"):
     skip = EGG_HATCH_DAY if is_abm else None
 
     print(f"\n  Generating {model_upper} figures → {outdir}/")
+    if excluded:
+        print(f"  Excluding: {', '.join(sorted(excluded))}")
     print(f"  {'—' * 48}")
+
+    # Apply exclusion filter to subsets
+    sub_a = filter_subset_by_exclusion(SUBSET_A, excluded)
+    sub_b = filter_subset_by_exclusion(SUBSET_B, excluded)
 
     # 1–2: Infection over time
     for subset, sname, tag in [
-        (SUBSET_A, SUBSET_A_NAME, "individual"),
-        (SUBSET_B, SUBSET_B_NAME, "er_centric"),
+        (sub_a, SUBSET_A_NAME, "individual"),
+        (sub_b, SUBSET_B_NAME, "er_centric"),
     ]:
         plot_timeseries(
             df, subset, sname, metric="inf",
@@ -950,8 +1056,8 @@ def generate_figures(df, model, outdir, time_col="Day"):
 
     # 3–4: Final infection (strip + bar hybrid)
     for subset, sname, tag in [
-        (SUBSET_A, SUBSET_A_NAME, "individual"),
-        (SUBSET_B, SUBSET_B_NAME, "er_centric"),
+        (sub_a, SUBSET_A_NAME, "individual"),
+        (sub_b, SUBSET_B_NAME, "er_centric"),
     ]:
         plot_final_infection(
             df, subset, sname,
@@ -962,8 +1068,8 @@ def generate_figures(df, model, outdir, time_col="Day"):
 
     # 5–6: Time to fixation
     for subset, sname, tag in [
-        (SUBSET_A, SUBSET_A_NAME, "individual"),
-        (SUBSET_B, SUBSET_B_NAME, "er_centric"),
+        (sub_a, SUBSET_A_NAME, "individual"),
+        (sub_b, SUBSET_B_NAME, "er_centric"),
     ]:
         plot_time_to_fixation(
             df, subset, sname,
@@ -980,6 +1086,7 @@ def generate_figures(df, model, outdir, time_col="Day"):
         path_stem=os.path.join(outdir, "heatmap_infection"),
         time_col=time_col, fmt=".2f", vmin=0, vmax=1,
         csv_raw_func=raw_final_infection,
+        excluded=excluded,
     )
 
     # 8: Heatmap — fixation percentage
@@ -990,6 +1097,7 @@ def generate_figures(df, model, outdir, time_col="Day"):
         path_stem=os.path.join(outdir, "heatmap_fixation_pct"),
         time_col=time_col, fmt=".0f", vmin=0, vmax=100,
         csv_raw_func=raw_fixation_binary,
+        excluded=excluded,
     )
 
     # 9: Heatmap — median time to fixation
@@ -1001,13 +1109,14 @@ def generate_figures(df, model, outdir, time_col="Day"):
         path_stem=os.path.join(outdir, "heatmap_fixation_time"),
         time_col=time_col, fmt=".0f", vmin=0, vmax=max_time,
         csv_raw_func=raw_time_to_fixation,
+        excluded=excluded,
     )
 
     # ABM-only: population over time
     if is_abm:
         for subset, sname, tag in [
-            (SUBSET_A, SUBSET_A_NAME, "individual"),
-            (SUBSET_B, SUBSET_B_NAME, "er_centric"),
+            (sub_a, SUBSET_A_NAME, "individual"),
+            (sub_b, SUBSET_B_NAME, "er_centric"),
         ]:
             plot_timeseries(
                 df, subset, sname, metric="pop",
@@ -1025,12 +1134,13 @@ def generate_figures(df, model, outdir, time_col="Day"):
             path_stem=os.path.join(outdir, "heatmap_population"),
             time_col=time_col, fmt=".0f",
             csv_raw_func=raw_final_population,
+            excluded=excluded,
         )
 
         # ABM: infected count over time
         for subset, sname, tag in [
-            (SUBSET_A, SUBSET_A_NAME, "individual"),
-            (SUBSET_B, SUBSET_B_NAME, "er_centric"),
+            (sub_a, SUBSET_A_NAME, "individual"),
+            (sub_b, SUBSET_B_NAME, "er_centric"),
         ]:
             plot_timeseries(
                 df, subset, sname, metric="ninf",
@@ -1044,8 +1154,8 @@ def generate_figures(df, model, outdir, time_col="Day"):
 
         # ABM: final infected count strip plots
         for subset, sname, tag in [
-            (SUBSET_A, SUBSET_A_NAME, "individual"),
-            (SUBSET_B, SUBSET_B_NAME, "er_centric"),
+            (sub_a, SUBSET_A_NAME, "individual"),
+            (sub_b, SUBSET_B_NAME, "er_centric"),
         ]:
             plot_final_strip(
                 df, subset, sname,
@@ -1067,6 +1177,7 @@ def generate_figures(df, model, outdir, time_col="Day"):
             path_stem=os.path.join(outdir, "heatmap_infected_count"),
             time_col=time_col, fmt=".0f",
             csv_raw_func=raw_final_infected_count,
+            excluded=excluded,
         )
 
 
@@ -1093,8 +1204,13 @@ Examples:
     parser.add_argument("--model", required=True, choices=["abm", "wfm"])
     parser.add_argument("--input", required=True, help="Combined CSV from ingest_data.py")
     parser.add_argument("--outdir", default=None, help="Output directory (default: figures_{model}/)")
+    parser.add_argument("--exclude", default=None,
+                        help="Comma-separated Wolbachia mechanics to exclude from "
+                             "all figures. Valid: CI, MK, ER, IE. "
+                             "Example: --exclude MK or --exclude MK,IE")
     args = parser.parse_args()
 
+    excluded = parse_exclude(args.exclude)
     outdir = args.outdir or f"figures_{args.model}"
 
     print("=" * 56)
@@ -1103,6 +1219,8 @@ Examples:
     print(f"  Model:  {args.model.upper()}")
     print(f"  Input:  {args.input}")
     print(f"  Output: {outdir}/")
+    if excluded:
+        print(f"  Exclude: {', '.join(sorted(excluded))}")
 
     df = load_data(args.input)
     n_combos = df["Combo"].nunique()
@@ -1112,7 +1230,7 @@ Examples:
     print(f"  Combos: {n_combos}  |  Reps: {n_reps}  |  Max time: {n_time}")
     print("=" * 56)
 
-    generate_figures(df, args.model, outdir, time_col="Day")
+    generate_figures(df, args.model, outdir, time_col="Day", excluded=excluded)
 
     n_png = len([f for f in os.listdir(outdir) if f.endswith(".png")])
     n_csv = len([f for f in os.listdir(outdir) if f.endswith(".csv")])
@@ -1121,3 +1239,8 @@ Examples:
 
 if __name__ == "__main__":
     main()
+
+#Example usage: python -m wings.analysis.plot_wings --model wfm --input data/combined_wfm.csv --exclude MK
+# python -m wings.analysis.plot_wings --model abm --input data/combined_abm05.csv --exclude MK
+# python -m wings.analysis.plot_wings --model abm --input data/combined_abm.csv --exclude MK
+# python -m wings.analysis.plot_wings --model abm --input data/combined.csv
