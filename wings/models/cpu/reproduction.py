@@ -104,7 +104,7 @@ class Reproduction:
                 # Increased fecundity: raise egg count
                 factor = (self.environment.params.fecundity_increase_factor 
                           if hasattr(self.environment, 'params') and self.environment.params 
-                          else 1.35)
+                          else 1.2)
                 egg_num = int(round(egg_num * factor))
             elif red_effect and not inc_effect:
                 # Reduced fecundity: lower egg count
@@ -147,7 +147,7 @@ class Reproduction:
             if self.wolbachia_effects.get('increased_eggs', False) and not self.wolbachia_effects.get('reduced_eggs', False):
                 factor = (self.environment.params.fecundity_increase_factor 
                           if hasattr(self.environment, 'params') and self.environment.params 
-                          else 1.35)
+                          else 1.2)
                 eggs_per_pair[mothers_infected] = torch.round(
                     eggs_per_pair[mothers_infected].float() * factor
                 ).to(torch.long)

@@ -10,8 +10,8 @@ eggs on Wolbachia invasion.
 
 Biology
 -------
-Tribolium castaneum generation time ≈ 30 days at 30 °C (Pointer et al.
-2021, Heredity).  One year ≈ 12 generations.
+Tribolium castaneum generation time ≈ 24 days at 30 °C (Pointer et al.
+2021, Heredity).  One year ≈ 15 generations.
 
 Mapping spatial effects to well-mixed
 --------------------------------------
@@ -63,7 +63,7 @@ import numpy as np
 
 def simulate(
     N: int = 50,
-    max_generations: int = 12,
+    max_generations: int = 15,
     seed: int = 42,
     ci: bool = False,
     mk: bool = False,
@@ -72,7 +72,7 @@ def simulate(
     ci_strength: float = 1.0,
     egg_laying_max: int = 15,
     male_offspring_rate: float = 0.1,
-    fecundity_increase_factor: float = 1.35,
+    fecundity_increase_factor: float = 1.2,
     er_mating_advantage: float = 1.4,
     initial_infection_freq: float = 0.5,
 ):
@@ -84,7 +84,7 @@ def simulate(
     N : int
         Fixed adult population size per generation.
     max_generations : int
-        Maximum generations to simulate (≈ 1 year at 12).
+        Maximum generations to simulate (≈ 1 year at 15).
     seed : int
         RNG seed for reproducibility.
     ci, mk, er, ie : bool
@@ -305,7 +305,7 @@ def run_all(args):
     print("  W.I.N.G.S. — Fixed-size discrete-generation model")
     print("=" * 56)
     print(f"  Population:   {args.population} adults / generation")
-    print(f"  Generations:  {args.max_generations} (≈ {args.max_generations * 30} days)")
+    print(f"  Generations:  {args.max_generations} (≈ {args.max_generations * 24} days)")
     print(f"  Init. freq:   {args.initial_infection_freq:.0%}")
     print(f"  Combinations: {len(combos)}")
     print(f"  Replicates:   {args.nreps}")
@@ -413,8 +413,8 @@ Examples:
         help="Fixed adult population size per generation (default: 50)",
     )
     parser.add_argument(
-        "--max-generations", type=int, default=12,
-        help="Max generations to simulate; 12 ≈ 1 year (default: 12)",
+        "--max-generations", type=int, default=15,
+        help="Max generations to simulate; 15 ≈ 1 year (default: 15)",
     )
     parser.add_argument(
         "--initial-infection-freq", type=float, default=0.5,
@@ -438,8 +438,8 @@ Examples:
                         help="Max eggs per mating (uniform 1..max, default: 15)")
     parser.add_argument("--male-offspring-rate", type=float, default=0.1,
                         help="P(male) for infected mothers when MK active (default: 0.1)")
-    parser.add_argument("--fecundity-increase-factor", type=float, default=1.35,
-                        help="Clutch multiplier for IE (default: 1.35)")
+    parser.add_argument("--fecundity-increase-factor", type=float, default=1.2,
+                        help="Clutch multiplier for IE (default: 1.2)")
     parser.add_argument("--er-mating-advantage", type=float, default=1.4,
                         help="Mating probability ratio infected/uninfected for ER (default: 1.4)")
 
