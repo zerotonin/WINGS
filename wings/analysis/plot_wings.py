@@ -808,21 +808,41 @@ def plot_heatmap(df, metric_func, cmap, cbar_label, title, path_stem,
     if excluded is None:
         excluded = set()
 
-    row_configs = [
-        (False, False, "—"),
-        (False, True,  "MK"),
-        (True,  False, "CI"),
-        (True,  True,  "CI+MK"),
-    ]
-    col_configs = [
+    # Rows: ER × MK axis
+    # Full grid when MK is present; clean 2-row grid when MK excluded
+    if "MK" not in excluded:
+        all_rows = [
+            (False, False, "—"),       # neither ER nor MK
+            (False, True,  "MK"),      # MK only
+            (True,  False, "ER"),      # ER only
+            (True,  True,  "MK+ER"),   # both
+        ]
+    else:
+        all_rows = [
+            (False, False, "—"),       # no ER
+            (True,  False, "ER"),      # ER
+        ]
+
+    # Apply ER exclusion to rows
+    if "ER" in excluded:
+        all_rows = [r for r in all_rows if not r[0]]
+
+    # Columns: CI × IE axis
+    all_cols = [
         (False, False, "—"),
         (False, True,  "IE"),
-        (True,  False, "ER"),
-        (True,  True,  "ER+IE"),
+        (True,  False, "CI"),
+        (True,  True,  "CI+IE"),
     ]
 
-    row_configs, col_configs = filter_heatmap_configs(
-        row_configs, col_configs, excluded)
+    # Apply CI / IE exclusion to columns
+    if "CI" in excluded:
+        all_cols = [c for c in all_cols if not c[0]]
+    if "IE" in excluded:
+        all_cols = [c for c in all_cols if not c[1]]
+
+    row_configs = all_rows
+    col_configs = all_cols
 
     n_rows = len(row_configs)
     n_cols = len(col_configs)
@@ -834,12 +854,12 @@ def plot_heatmap(df, metric_func, cmap, cbar_label, title, path_stem,
     matrix = np.full((n_rows, n_cols), np.nan)
     annot = np.empty((n_rows, n_cols), dtype=object)
 
-    for ri, (r_ci, r_mk, _) in enumerate(row_configs):
-        for ci_col, (c_er, c_ie, _) in enumerate(col_configs):
+    for ri, (r_er, r_mk, _) in enumerate(row_configs):
+        for ci_col, (c_ci, c_ie, _) in enumerate(col_configs):
             sub = df[
-                (df["Cytoplasmic Incompatibility"] == r_ci)
+                (df["Cytoplasmic Incompatibility"] == c_ci)
                 & (df["Male Killing"] == r_mk)
-                & (df["Increased Exploration Rate"] == c_er)
+                & (df["Increased Exploration Rate"] == r_er)
                 & (df["Increased Eggs"] == c_ie)
             ]
             if len(sub) == 0:
@@ -875,8 +895,16 @@ def plot_heatmap(df, metric_func, cmap, cbar_label, title, path_stem,
     ax.set_xticklabels([c[2] for c in col_configs])
     ax.set_yticks(range(n_rows))
     ax.set_yticklabels([r[2] for r in row_configs])
-    ax.set_xlabel("Exploration / Fecundity axis", fontsize=10)
-    ax.set_ylabel("CI / MK axis", fontsize=10)
+    # Dynamic axis labels
+    row_labels_set = {label for _, _, label in row_configs if label != "—"}
+    col_labels_set = {label for _, _, label in col_configs if label != "—"}
+    # Extract unique mechanic abbreviations from labels
+    row_mechs = sorted({m for l in row_labels_set for m in l.split("+")})
+    col_mechs = sorted({m for l in col_labels_set for m in l.split("+")})
+    xlabel = " / ".join(col_mechs) + " axis" if col_mechs else ""
+    ylabel = " / ".join(row_mechs) + " axis" if row_mechs else ""
+    ax.set_xlabel(xlabel, fontsize=10)
+    ax.set_ylabel(ylabel, fontsize=10)
     ax.set_title(title, fontweight="bold", pad=12)
 
     cbar = fig.colorbar(im, ax=ax, shrink=0.85, pad=0.08)
@@ -888,17 +916,17 @@ def plot_heatmap(df, metric_func, cmap, cbar_label, title, path_stem,
     # --- CSV export: per-replicate raw data for all 16 combos ---
     if csv_raw_func is not None:
         csv_rows = []
-        for ri, (r_ci, r_mk, _) in enumerate(row_configs):
-            for ci_col, (c_er, c_ie, _) in enumerate(col_configs):
+        for ri, (r_er, r_mk, _) in enumerate(row_configs):
+            for ci_col, (c_ci, c_ie, _) in enumerate(col_configs):
                 sub = df[
-                    (df["Cytoplasmic Incompatibility"] == r_ci)
+                    (df["Cytoplasmic Incompatibility"] == c_ci)
                     & (df["Male Killing"] == r_mk)
-                    & (df["Increased Exploration Rate"] == c_er)
+                    & (df["Increased Exploration Rate"] == r_er)
                     & (df["Increased Eggs"] == c_ie)
                 ]
                 if len(sub) == 0:
                     continue
-                label = combo_label(r_ci, r_mk, c_er, c_ie)
+                label = combo_label(c_ci, r_mk, r_er, c_ie)
                 raw = csv_raw_func(sub, time_col)
                 for rec in raw:
                     rec["mechanic"] = label
@@ -1243,4 +1271,5 @@ if __name__ == "__main__":
 #Example usage: python -m wings.analysis.plot_wings --model wfm --input data/combined_wfm.csv --exclude MK
 # python -m wings.analysis.plot_wings --model abm --input data/combined_abm05.csv --exclude MK
 # python -m wings.analysis.plot_wings --model abm --input data/combined_abm.csv --exclude MK
+# python -m wings.analysis.plot_wings --model wfm --input data/combined_wfm.csv --exclude MK
 # python -m wings.analysis.plot_wings --model abm --input data/combined.csv
