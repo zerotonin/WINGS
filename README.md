@@ -2,6 +2,7 @@
 
 [![Documentation](https://img.shields.io/badge/docs-GitHub%20Pages-blue)](https://zerotonin.github.io/WINGS)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE.md)
+[![DOI](https://zenodo.org/badge/719884940.svg)](https://doi.org/10.5281/zenodo.19311352)
 
 A spatially explicit agent-based model (ABM) of *Wolbachia* endosymbiont
 spread in *Tribolium confusum* beetle populations, with GPU acceleration
