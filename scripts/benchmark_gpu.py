@@ -11,9 +11,11 @@ Run interactively on a GPU node:
     python benchmark_gpu.py
 """
 
-import torch
 import time
-from gpu_simulation import GPUSimulation, SimConfig
+
+import torch
+
+from wings.models.gpu_abm import GPUSimulation, SimConfig
 
 
 def benchmark(mortality_mode, n_days=120):
@@ -65,10 +67,10 @@ def benchmark(mortality_mode, n_days=120):
     per_day = elapsed / (n_days - 1)
 
     sex = sim.get_sex_ratio()
-    print(f"\n  Final state:")
+    print("\n  Final state:")
     print(f"    F_U={sex['F_U']:,}  F_I={sex['F_I']:,}  "
           f"M_U={sex['M_U']:,}  M_I={sex['M_I']:,}")
-    print(f"  Timing:")
+    print("  Timing:")
     print(f"    Total: {elapsed:.1f}s  ({per_day*1000:.0f} ms/day)")
     print(f"    Projected 365 days: {per_day * 365:.0f}s")
 
@@ -103,9 +105,10 @@ if __name__ == '__main__':
 
     # Summary
     print(f"\n{'='*65}")
-    print(f"  Summary (ms per simulated day, 120-day run)")
+    print("  Summary (ms per simulated day, 120-day run)")
     print(f"{'='*65}")
     for mode, pd in results.items():
         proj_365 = pd * 365
         print(f"  {mode:15s}: {pd*1000:7.0f} ms/day  →  {proj_365:.0f}s for 365 days")
-    print(f"\n  With 4 GPUs, 160 runs would take ~{max(results.values()) * 365 * 160 / 4 / 60:.0f} min")
+    proj_min = max(results.values()) * 365 * 160 / 4 / 60
+    print(f"\n  With 4 GPUs, 160 runs would take ~{proj_min:.0f} min")

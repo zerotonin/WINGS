@@ -1,10 +1,12 @@
 import itertools
-import os
 import multiprocessing
-import pandas as pd
-from Environment import Environment
-from tqdm import tqdm
+import os
+
 import numpy as np
+import pandas as pd
+from tqdm import tqdm
+
+from wings.models.cpu import Environment
 
 # Constants for batch simulations
 GRID_SIZE = 500
@@ -22,16 +24,18 @@ def run_simulation(args):
     effects, trial = args
     # Extract CI strength if provided in effects, otherwise default to 1.0
     ci_strength = effects.pop('ci_strength', 1.0)
-    env = Environment(GRID_SIZE, INITIAL_POPULATION, effects, 
-                      infected_fraction=INFECTED_FRACTION, 
-                      ci_strength=ci_strength, multiple_mating=True, 
+    env = Environment(GRID_SIZE, INITIAL_POPULATION, effects,
+                      infected_fraction=INFECTED_FRACTION,
+                      ci_strength=ci_strength, multiple_mating=True,
                       use_gpu=True)
     # Run the simulation for MAX_TIME hours
     for hour in range(MAX_TIME):
         env.run_simulation_step()
     # Compute daily medians for population size and infection rate
-    daily_pop = [np.median(env.population_size[i:i+24]) for i in range(0, len(env.population_size), 24)]
-    daily_inf = [np.median(env.infection_history[i:i+24]) for i in range(0, len(env.infection_history), 24)]
+    daily_pop = [np.median(env.population_size[i:i+24])
+                 for i in range(0, len(env.population_size), 24)]
+    daily_inf = [np.median(env.infection_history[i:i+24])
+                 for i in range(0, len(env.infection_history), 24)]
     # Construct filename based on effects and CI strength
     effect_tokens = [f"{k}_{v}" for k, v in effects.items()]
     if effects.get('cytoplasmic_incompatibility', False):
@@ -39,15 +43,18 @@ def run_simulation(args):
     filename = os.path.join(SAVE_PATH, f"{'_'.join(effect_tokens)}_{trial:03d}.csv")
     # Ensure output directory exists and save results to CSV
     os.makedirs(SAVE_PATH, exist_ok=True)
-    pd.DataFrame({'Population Size': daily_pop, 'Infection Rate': daily_inf}).to_csv(filename, index=False)
+    pd.DataFrame(
+        {'Population Size': daily_pop, 'Infection Rate': daily_inf}
+    ).to_csv(filename, index=False)
 
 def main():
     # Define all combinations of effect toggles (excluding CI strength which is handled separately)
-    keys = ['cytoplasmic_incompatibility', 'male_killing', 'increased_exploration_rate', 'increased_eggs', 'reduced_eggs']
+    keys = ['cytoplasmic_incompatibility', 'male_killing',
+            'increased_exploration_rate', 'increased_eggs', 'reduced_eggs']
     all_combos = list(itertools.product([True, False], repeat=len(keys)))
     # Filter out invalid combination where both increased_eggs and reduced_eggs are True
     valid_combos = [
-        combo for combo in all_combos 
+        combo for combo in all_combos
         if not (combo[keys.index('increased_eggs')] and combo[keys.index('reduced_eggs')])
     ]
     # Prepare job list: each job is (effects_dict, trial_number)
