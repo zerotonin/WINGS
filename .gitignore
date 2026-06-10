@@ -26,6 +26,9 @@ htmlcov/
 .idea/
 *.swp
 
+# Machine-specific paths (copy local_paths.template.json → local_paths.json)
+local_paths.json
+
 # OS
 .DS_Store
 Thumbs.db
