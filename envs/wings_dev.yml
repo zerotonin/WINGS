@@ -1,8 +1,13 @@
 # Local development & testing environment (CPU-only).
 #   conda env create -f envs/wings_dev.yml
 #   conda activate wings-dev
-#   pytest            # runs the full suite, including the torch engine tests
+#   pip install -e .          # install WINGS itself (run from the repo root)
+#   pytest                    # full suite, including the torch engine tests
 #   ruff check .
+#
+# Note: the editable install is a separate step because a conda YAML runs
+# its pip block from the file's own directory (envs/), where there is no
+# pyproject.toml — so "-e ." cannot find the package here.
 
 name: wings-dev
 channels:
@@ -24,4 +29,3 @@ dependencies:
       - pytest>=7.0
       - pytest-cov
       - ruff
-      - -e .
