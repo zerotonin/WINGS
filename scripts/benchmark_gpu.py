@@ -4,11 +4,12 @@ W.I.N.G.S. GPU Benchmark — Growth scenario
 Tests the simulation starting from 50 beetles growing to carrying capacity
 under different density-dependent mortality modes.
 
-Run interactively on a GPU node:
-    srun --partition=aoraki_gpu_L40 --gpus-per-task=1 --mem=16G --time=00:30:00 \
-         --account=geuba03p --pty bash
-    conda activate wings-gpu
-    python benchmark_gpu.py
+Run interactively on a GPU node (paths come from local_paths.json):
+    source slurm/load_paths.sh
+    srun --account="$WINGS_SLURM_ACCOUNT" --partition="$WINGS_SLURM_PARTITION" \
+         --gpus-per-task=1 --mem=16G --time=00:30:00 --pty bash
+    conda activate "$WINGS_CONDA_ENV"
+    python scripts/benchmark_gpu.py
 """
 
 import time
