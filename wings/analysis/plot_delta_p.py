@@ -31,6 +31,7 @@ import warnings
 from pathlib import Path
 
 import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
@@ -344,7 +345,7 @@ def fit_analytical(binned_df):
             params['gamma'] = float(popt[2])
             print(f"  CI fit: A={popt[0]:.5f}, α={popt[1]:.2f}, γ={popt[2]:.2f}")
             if popt[1] > popt[2]:
-                print(f"    → peak shifted RIGHT (α > γ): spatial/growth effects")
+                print("    → peak shifted RIGHT (α > γ): spatial/growth effects")
         except Exception as e:
             print(f"  CI fit failed ({e}), using defaults")
             params['A'] = 0.008
@@ -429,13 +430,16 @@ def plot_delta_p_figure(binned_df, params, outdir, dt):
         all_theory['ER'] = model_er(p_th, params['s_0'], params['beta'])
         all_titles['ER'] = 'ER only'
     if 'A' in params and 's_0' in params:
-        all_theory['CI_ER'] = (model_ci_asymmetric(p_th, params['A'], params['alpha'], params['gamma'])
-                               + model_er(p_th, params['s_0'], params['beta']))
+        all_theory['CI_ER'] = (
+            model_ci_asymmetric(p_th, params['A'], params['alpha'], params['gamma'])
+            + model_er(p_th, params['s_0'], params['beta'])
+        )
         all_titles['CI_ER'] = 'CI + ER'
 
     # Only plot panels for phenotypes present in data or theory
+    _order = ['CI', 'ER', 'CI_ER']
     available = sorted(set(binned_df['Phenotype'].unique()) | set(all_theory.keys()),
-                       key=lambda x: ['CI', 'ER', 'CI_ER'].index(x) if x in ['CI', 'ER', 'CI_ER'] else 99)
+                       key=lambda x: _order.index(x) if x in _order else 99)
     if not available:
         print("    [skip] delta_p_vs_p — no phenotypes to plot")
         return
@@ -709,7 +713,7 @@ def main():
     with open(os.path.join(args.outdir, 'fitted_params.txt'), 'w') as f:
         for k, v in sorted(params.items()):
             f.write(f"{k} = {v}\n")
-    print(f"\n  Saved: raw_delta_p.csv, binned_delta_p.csv, fitted_params.txt")
+    print("\n  Saved: raw_delta_p.csv, binned_delta_p.csv, fitted_params.txt")
 
     # --- Plot ---
     print("\n  Generating figures (PNG + SVG)...")
@@ -723,4 +727,4 @@ def main():
 if __name__ == '__main__':
     main()
 
-#Example usage: python -m wings.analysis.plot_delta_p --input data/combined_delta_p.csv --dt 24 
+#Example usage: python -m wings.analysis.plot_delta_p --input data/combined_delta_p.csv --dt 24

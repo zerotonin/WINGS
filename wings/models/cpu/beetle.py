@@ -1,5 +1,6 @@
 import numpy as np
 
+
 class Beetle:
     """A single beetle agent in the CPU-based ABM.
 

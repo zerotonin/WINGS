@@ -1,5 +1,7 @@
 """Original CPU-based agent-based model (per-beetle Python loops)."""
-from .environment import Environment
 from .beetle import Beetle
-from .reproduction import Reproduction
+from .environment import Environment
 from .parameters import ParameterSet
+from .reproduction import Reproduction
+
+__all__ = ["Beetle", "Environment", "ParameterSet", "Reproduction"]

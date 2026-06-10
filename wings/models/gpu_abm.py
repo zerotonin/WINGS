@@ -36,11 +36,12 @@ Usage
 Author: Adapted from WINGS ABM (Geurten et al.)
 """
 
-import torch
-import numpy as np
-from dataclasses import dataclass, field
-from typing import Dict, Optional, List, Tuple
 import time
+from dataclasses import dataclass, field
+from typing import Dict, List, Optional
+
+import numpy as np
+import torch
 
 
 # ---------------------------------------------------------------------------
@@ -443,7 +444,9 @@ class GPUSimulation:
             # At N<<K, extra mortality ≈ 0.
             if density_ratio <= 0.5:
                 return  # negligible at low density
-            base_hourly_mu = 1.0 / ((self.cfg.life_expectancy_min + self.cfg.life_expectancy_max) / 2)
+            base_hourly_mu = 1.0 / (
+                (self.cfg.life_expectancy_min + self.cfg.life_expectancy_max) / 2
+            )
             extra_mu = base_hourly_mu * (density_ratio ** self.cfg.mortality_beta)
             extra_mu = min(extra_mu, 0.1)  # cap at 10% per hour to avoid instabilities
             # Each adult dies with probability extra_mu this hour
@@ -464,7 +467,8 @@ class GPUSimulation:
             n_eggs = int(egg_mask.sum().item())
             if n_eggs == 0:
                 return
-            p_eaten = self.cfg.cannibalism_rate * n_adults * (density_ratio ** self.cfg.mortality_beta)
+            p_eaten = (self.cfg.cannibalism_rate * n_adults
+                       * (density_ratio ** self.cfg.mortality_beta))
             p_eaten = min(p_eaten, 0.95)  # cap so some eggs always survive
             egg_idx = egg_mask.nonzero(as_tuple=False).squeeze(-1)
             death_roll = torch.rand(n_eggs, device=self.device)
@@ -635,7 +639,6 @@ class GPUSimulation:
         # --- Assign cell indices ---
         fem_cx = (pop.x[fem_idx] / cs).long() % nc
         fem_cy = (pop.y[fem_idx] / cs).long() % nc
-        fem_cell = fem_cx * nc + fem_cy  # flat cell index
 
         mal_cx = (pop.x[mal_idx] / cs).long() % nc
         mal_cy = (pop.y[mal_idx] / cs).long() % nc
@@ -844,12 +847,8 @@ class GPUSimulation:
             if pair_fem_local.shape[0] == 0:
                 break
 
-            # For each female, pick the pair with the highest random score
-            # Use scatter_max-like logic
-            best_score = torch.full((nf,), -1.0, device=self.device)
-            best_pair_idx = torch.full((nf,), -1, device=self.device, dtype=torch.long)
-
-            # Simple approach: sort by (female, -score) and take first per female
+            # For each female, pick the pair with the highest random score.
+            # Sort by (female, -score) and take the first pair per female.
             sort_key = pair_fem_local.float() - rand_scores / (rand_scores.max() + 1)
             order = torch.argsort(sort_key)
             sorted_fem = pair_fem_local[order]
@@ -873,10 +872,8 @@ class GPUSimulation:
                 break
 
             # Deduplicate males (each male only once per round)
-            _, unique_male_inv = torch.unique(selected_mal_global, return_inverse=True)
-            unique_male_first = torch.zeros(selected_mal_global.max().item() + 1,
-                                            device=self.device, dtype=torch.bool)
-            keep_pair = torch.zeros(selected_fem_local.shape[0], device=self.device, dtype=torch.bool)
+            keep_pair = torch.zeros(selected_fem_local.shape[0],
+                                    device=self.device, dtype=torch.bool)
             for i in range(selected_fem_local.shape[0]):
                 mg = selected_mal_global[i].item()
                 if mg not in male_claimed:
@@ -984,7 +981,8 @@ class GPUSimulation:
                         rand_mat = torch.rand(ci_idx.shape[0], max_e, device=self.device)
                         lengths = eggs[ci_idx].unsqueeze(1)
                         valid = torch.arange(max_e, device=self.device).unsqueeze(0) < lengths
-                        survived = ((rand_mat >= cfg.ci_strength) & valid).sum(dim=1).to(torch.int32)
+                        survived = ((rand_mat >= cfg.ci_strength) & valid).sum(
+                            dim=1).to(torch.int32)
                         eggs[ci_idx] = survived
 
         # --- Expand: repeat mother attributes per egg ---
@@ -1127,7 +1125,8 @@ def run_experiment(cfg: SimConfig, n_days: int = 365, verbose: bool = True) -> G
 # CLI entry point
 # ---------------------------------------------------------------------------
 if __name__ == '__main__':
-    import argparse, json
+    import argparse
+    import json
 
     parser = argparse.ArgumentParser(description="WINGS GPU Simulation")
     parser.add_argument('--population', type=int, default=50)
@@ -1148,7 +1147,8 @@ if __name__ == '__main__':
     parser.add_argument('--mortality-beta', type=float, default=2.0,
                         help='Exponent for density-dependent effects')
     parser.add_argument('--cannibalism-rate', type=float, default=6e-7,
-                        help='Egg cannibalism rate per adult per hour at N=K (default: 6e-7, calibrated for K=20000)')
+                        help='Egg cannibalism rate per adult per hour at N=K '
+                             '(default: 6e-7, calibrated for K=20000)')
     parser.add_argument('--backend', choices=['brute', 'cell_list'], default='cell_list')
     parser.add_argument('--device', choices=['cuda', 'cpu'], default='cuda')
     parser.add_argument('--infected-fraction', type=float, default=0.10,
@@ -1179,7 +1179,7 @@ if __name__ == '__main__':
         },
     )
 
-    print(f"WINGS GPU Simulation")
+    print("WINGS GPU Simulation")
     print(f"  Device:     {args.device}")
     print(f"  Backend:    {args.backend}")
     print(f"  Population: {args.population}")

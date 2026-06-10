@@ -21,10 +21,10 @@ Output columns (what plot_results.py expects):
 import os
 import re
 import sys
-import pandas as pd
 from pathlib import Path
-from tqdm import tqdm
 
+import pandas as pd
+from tqdm import tqdm
 
 # ── Filename parser ──────────────────────────────────────────────
 FILENAME_PATTERN = re.compile(
@@ -171,7 +171,7 @@ def main(data_dir: str, output_file: str):
     n_days = combined_df['Day'].max()
 
     print(f"\n{'='*55}")
-    print(f"  Ingestion complete")
+    print("  Ingestion complete")
     print(f"{'='*55}")
     print(f"  Files read:   {n_files}")
     print(f"  Skipped:      {skipped} (non-matching filenames)")
@@ -184,17 +184,21 @@ def main(data_dir: str, output_file: str):
     print(f"{'='*55}")
 
     # Per-combo summary
-    print(f"\n  Replicates per combo:")
+    print("\n  Replicates per combo:")
     for (ci, mk, er, eg), grp in combined_df.groupby([
         'Cytoplasmic Incompatibility', 'Male Killing',
         'Increased Exploration Rate', 'Increased Eggs',
     ]):
         reps = grp['Replicate ID'].nunique()
         label = []
-        if ci: label.append('CI')
-        if mk: label.append('MK')
-        if er: label.append('ER')
-        if eg: label.append('IE')
+        if ci:
+            label.append('CI')
+        if mk:
+            label.append('MK')
+        if er:
+            label.append('ER')
+        if eg:
+            label.append('IE')
         name = '+'.join(label) if label else 'None'
         print(f"    {name:40s}  {reps:3d} replicates")
 

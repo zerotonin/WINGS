@@ -1,8 +1,9 @@
-import pandas as pd
-import numpy as np
-import scipy.stats as stats
-from tqdm import tqdm
 import itertools
+
+import numpy as np
+import pandas as pd
+from tqdm import tqdm
+
 
 def read_data(file_path):
     """Read a simulation CSV into a pandas DataFrame.
@@ -32,7 +33,7 @@ def bootstrap_ci(data, n_bootstrap=1000, ci=0.95):
     for _ in range(n_bootstrap):
         sample = np.random.choice(data, size=len(data), replace=True)
         bootstrapped_medians.append(np.median(sample))
-    
+
     lower_bound = np.percentile(bootstrapped_medians, (1 - ci) / 2 * 100)
     upper_bound = np.percentile(bootstrapped_medians, (1 + ci) / 2 * 100)
     return lower_bound, upper_bound
@@ -61,7 +62,7 @@ def get_wolbachia_effects():
             }
 
 def combination_to_string(effects, combination):
-    
+
     return ''.join(effects[e] for e, c in zip(effects, combination) if c) or 'no_effects'
 
 def main(file_path,output_file):

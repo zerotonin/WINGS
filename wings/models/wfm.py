@@ -50,12 +50,10 @@ Usage
 import argparse
 import csv
 import os
-import sys
 import time
 from itertools import product as iterproduct
 
 import numpy as np
-
 
 # ======================================================================
 #  Core simulation
@@ -268,10 +266,14 @@ def combo_id(ci, mk, er, ie):
 
 def combo_label(ci, mk, er, ie):
     parts = []
-    if ci: parts.append("CI")
-    if mk: parts.append("MK")
-    if er: parts.append("ER")
-    if ie: parts.append("IE")
+    if ci:
+        parts.append("CI")
+    if mk:
+        parts.append("MK")
+    if er:
+        parts.append("ER")
+    if ie:
+        parts.append("IE")
     return "+".join(parts) if parts else "None"
 
 
@@ -493,10 +495,14 @@ Examples:
                 break
 
         flags = []
-        if args.ci: flags.append("CI")
-        if args.mk: flags.append("MK")
-        if args.er: flags.append("ER")
-        if args.ie: flags.append("IE")
+        if args.ci:
+            flags.append("CI")
+        if args.mk:
+            flags.append("MK")
+        if args.er:
+            flags.append("ER")
+        if args.ie:
+            flags.append("IE")
         label = "+".join(flags) if flags else "None"
 
         print(f"  Effects:     {label}")
@@ -505,7 +511,7 @@ Examples:
         if fixation_gen is not None:
             print(f"  Fixation:    generation {fixation_gen}")
         else:
-            print(f"  Fixation:    not reached")
+            print("  Fixation:    not reached")
         print(f"  Saved:       {outpath}")
 
 

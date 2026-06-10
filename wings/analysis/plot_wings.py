@@ -36,6 +36,7 @@ import warnings
 from pathlib import Path
 
 import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
@@ -190,7 +191,7 @@ def parse_exclude(exclude_str):
     if unknown:
         print(f"  ERROR: Unknown mechanic(s): {unknown}")
         print(f"  Valid options: {', '.join(sorted(MECHANIC_INDEX.keys()))}")
-        import sys; sys.exit(1)
+        sys.exit(1)
     return names
 
 
@@ -264,10 +265,14 @@ def combo_label(ci, mk, er, ie):
         str: Label like ``"CI+ER"`` or ``"None"`` (no effects).
     """
     parts = []
-    if ci: parts.append("CI")
-    if mk: parts.append("MK")
-    if er: parts.append("ER")
-    if ie: parts.append("IE")
+    if ci:
+        parts.append("CI")
+    if mk:
+        parts.append("MK")
+    if er:
+        parts.append("ER")
+    if ie:
+        parts.append("IE")
     return "+".join(parts) if parts else "None"
 
 
@@ -508,8 +513,8 @@ def plot_timeseries(
     ax.set_title(title, fontweight="bold", pad=10)
 
     # Legend with line styles shown
-    leg = ax.legend(loc="best", ncol=2 if len(labels) > 4 else 1,
-                    handlelength=3.0)
+    ax.legend(loc="best", ncol=2 if len(labels) > 4 else 1,
+              handlelength=3.0)
 
     if metric == "inf":
         ax.set_ylim(-0.02, 1.05)
@@ -899,8 +904,8 @@ def plot_heatmap(df, metric_func, cmap, cbar_label, title, path_stem,
     row_labels_set = {label for _, _, label in row_configs if label != "—"}
     col_labels_set = {label for _, _, label in col_configs if label != "—"}
     # Extract unique mechanic abbreviations from labels
-    row_mechs = sorted({m for l in row_labels_set for m in l.split("+")})
-    col_mechs = sorted({m for l in col_labels_set for m in l.split("+")})
+    row_mechs = sorted({m for lab in row_labels_set for m in lab.split("+")})
+    col_mechs = sorted({m for lab in col_labels_set for m in lab.split("+")})
     xlabel = " / ".join(col_mechs) + " axis" if col_mechs else ""
     ylabel = " / ".join(row_mechs) + " axis" if row_mechs else ""
     ax.set_xlabel(xlabel, fontsize=10)
@@ -1230,8 +1235,10 @@ Examples:
         """,
     )
     parser.add_argument("--model", required=True, choices=["abm", "wfm"])
-    parser.add_argument("--input", required=True, help="Combined CSV from ingest_data.py")
-    parser.add_argument("--outdir", default=None, help="Output directory (default: figures_{model}/)")
+    parser.add_argument("--input", required=True,
+                        help="Combined CSV from ingest_data.py")
+    parser.add_argument("--outdir", default=None,
+                        help="Output directory (default: figures_{model}/)")
     parser.add_argument("--exclude", default=None,
                         help="Comma-separated Wolbachia mechanics to exclude from "
                              "all figures. Valid: CI, MK, ER, IE. "
@@ -1268,7 +1275,8 @@ Examples:
 if __name__ == "__main__":
     main()
 
-#Example usage: python -m wings.analysis.plot_wings --model wfm --input data/combined_wfm.csv --exclude MK
+# Example usage:
+# python -m wings.analysis.plot_wings --model wfm --input data/combined_wfm.csv --exclude MK
 # python -m wings.analysis.plot_wings --model abm --input data/combined_abm05.csv --exclude MK
 # python -m wings.analysis.plot_wings --model abm --input data/combined_abm.csv --exclude MK
 # python -m wings.analysis.plot_wings --model wfm --input data/combined_wfm.csv --exclude MK

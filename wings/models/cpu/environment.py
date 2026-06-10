@@ -1,7 +1,10 @@
-from .reproduction import Reproduction
-from .beetle import Beetle
-import numpy as np
 import random
+
+import numpy as np
+
+from .beetle import Beetle
+from .reproduction import Reproduction
+
 
 class Environment:
     """The simulation arena for the CPU-based ABM.
@@ -21,10 +24,10 @@ class Environment:
         infection_history (list[float]): Time series of infection rates.
         infected_fraction (float): Current infection prevalence.
     """
-    def __init__(self, size, initial_population, wolbachia_effects, 
-                 infected_fraction=0.1, max_population=50, max_eggs=40, 
+    def __init__(self, size, initial_population, wolbachia_effects,
+                 infected_fraction=0.1, max_population=50, max_eggs=40,
                  male_to_female_ratio=0.5,
-                 param_set=None, ci_strength=1.0, multiple_mating=True, 
+                 param_set=None, ci_strength=1.0, multiple_mating=True,
                  use_gpu=False):
         """Initialise the simulation environment.
 
@@ -128,9 +131,11 @@ class Environment:
                     female_count += 1
                 infected = False
 
-            # Determine mating cooldown (females default 48h or from params; males use 10% of this in Beetle.can_mate)
+            # Mating cooldown: females default 48h or from params;
+            # males use 10% of this in Beetle.can_mate.
             mating_cd = self.params.female_mating_interval if (
-                hasattr(self, 'params') and self.params is not None and hasattr(self.params, 'female_mating_interval')
+                hasattr(self, 'params') and self.params is not None
+                and hasattr(self.params, 'female_mating_interval')
             ) else 48
             beetle = Beetle(position, infected, sex, self, age=age, mating_cooldown=mating_cd)
             self.population.append(beetle)
@@ -157,7 +162,7 @@ class Environment:
         # 1. Move all beetles (Lévy flight step for each)
         if self.use_gpu and len(self.population) > 0:
             # Parallel movement update using PyTorch for all beetles
-            positions_t = self.torch.tensor([b.position for b in self.population], 
+            positions_t = self.torch.tensor([b.position for b in self.population],
                                             dtype=self.torch.float32, device=self.device)
             # Lévy flight step: sample step sizes and directions
             U = self.torch.rand(len(self.population), device=self.device)
@@ -235,9 +240,15 @@ class Environment:
         Allows multiple matings if enabled. Produces offspring eggs for each successful mating.
         """
         current_time = self.sim_time
-        for female in filter(lambda b: b.sex == 'female' and b.can_mate(current_time), self.population):
+        eligible_females = [b for b in self.population
+                            if b.sex == 'female' and b.can_mate(current_time)]
+        for female in eligible_females:
             mates_found = 0
-            for male in filter(lambda b: b.sex == 'male' and b.can_mate(current_time), self.population):
+            # Recompute eligible males each female: a male that just mated
+            # falls off cooldown and must be excluded for later females.
+            eligible_males = [b for b in self.population
+                              if b.sex == 'male' and b.can_mate(current_time)]
+            for male in eligible_males:
                 if self.is_within_mating_distance(female, male):
                     # Perform mating and produce offspring (as eggs)
                     female.update_last_mating_time(current_time)
@@ -246,14 +257,16 @@ class Environment:
                     # Add offspring (eggs) to the egg list
                     self.eggs.extend(offspring_eggs)
                     mates_found += 1
-                    # If multiple mating is disallowed or the female has mated twice, stop checking further males
+                    # Stop if multiple mating is disallowed or the
+                    # female has already mated twice.
                     if not self.multiple_mating or mates_found >= 2:
                         break
 
     def is_within_mating_distance(self, female, male):
         """
         Determines if two beetles are within mating distance.
-        If 'increased_exploration_rate' is in effect and the female is infected, expands mating range by 40%.
+        If 'increased_exploration_rate' is in effect and the female is
+        infected, expands mating range by 40%.
         """
         distance = np.linalg.norm(np.array(female.position) - np.array(male.position))
         if female.infected and self.wolbachia_effects.get('increased_exploration_rate', False):
@@ -262,8 +275,9 @@ class Environment:
 
     def update_population_arrays(self):
         """
-        Updates cached tensors of population positions and infection statuses for GPU-based reproduction.
-        Called after any change in the population when GPU is in use.
+        Updates cached tensors of population positions and infection
+        statuses for GPU-based reproduction.  Called after any change
+        in the population when GPU is in use.
         """
         if not hasattr(self, 'torch'):
             return  # No torch available (should not happen if use_gpu is True)

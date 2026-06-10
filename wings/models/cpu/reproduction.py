@@ -1,5 +1,7 @@
 import random
+
 from .beetle import Beetle
+
 
 class Reproduction:
     """Handles beetle mating, offspring production, and *Wolbachia* effects.
@@ -44,7 +46,7 @@ class Reproduction:
         if female.sex != 'female' or male.sex != 'male':
             return []
         # Cytoplasmic Incompatibility: infected male with uninfected female
-        if (self.wolbachia_effects.get('cytoplasmic_incompatibility', False) and 
+        if (self.wolbachia_effects.get('cytoplasmic_incompatibility', False) and
                 male.infected and not female.infected):
             # CI is active for this pair
             if self.environment.ci_strength < 1.0:
@@ -73,7 +75,9 @@ class Reproduction:
             # Determine offspring sex
             if female.infected and self.wolbachia_effects.get('male_killing', False):
                 # Male-killing active: heavily skew sex ratio towards female
-                if hasattr(self.environment, 'params') and self.environment.params is not None and hasattr(self.environment.params, 'male_offspring_rate'):
+                if (hasattr(self.environment, 'params')
+                        and self.environment.params is not None
+                        and hasattr(self.environment.params, 'male_offspring_rate')):
                     male_probability = self.environment.params.male_offspring_rate
                 else:
                     male_probability = 0.1  # default 10% chance offspring is male
@@ -85,7 +89,9 @@ class Reproduction:
             # Offspring inherits mother's infection status (Wolbachia is maternally transmitted)
             offspring_infected = female.infected
             # Create the Beetle (age 0 by default in Beetle.__init__)
-            offspring_list.append(Beetle(offspring_position, offspring_infected, sex, self.environment))
+            offspring_list.append(
+                Beetle(offspring_position, offspring_infected, sex, self.environment)
+            )
         return offspring_list
 
     def determine_offspring_count(self, female):
@@ -102,14 +108,14 @@ class Reproduction:
                 pass
             elif inc_effect and not red_effect:
                 # Increased fecundity: raise egg count
-                factor = (self.environment.params.fecundity_increase_factor 
-                          if hasattr(self.environment, 'params') and self.environment.params 
+                factor = (self.environment.params.fecundity_increase_factor
+                          if hasattr(self.environment, 'params') and self.environment.params
                           else 1.2)
                 egg_num = int(round(egg_num * factor))
             elif red_effect and not inc_effect:
                 # Reduced fecundity: lower egg count
-                factor = (self.environment.params.fecundity_decrease_factor 
-                          if hasattr(self.environment, 'params') and self.environment.params 
+                factor = (self.environment.params.fecundity_decrease_factor
+                          if hasattr(self.environment, 'params') and self.environment.params
                           else 0.8)
                 egg_num = int(round(egg_num * factor))
         return egg_num
@@ -129,9 +135,11 @@ class Reproduction:
         sim (int): Index of the simulation batch.
         female_indices (List[int]): Population indices of mothers.
         male_indices (List[int]): Population indices of fathers.
-        Returns a dict with offspring attributes (positions, infected, sex, age, life) for all offspring.
+        Returns a dict with offspring attributes (positions, infected,
+        sex, age, life) for all offspring.
         """
-        torch = self.environment.torch  # use the same torch module (device context) as the environment
+        # use the same torch module (device context) as the environment
+        torch = self.environment.torch
         device = self.environment.device
         num_pairs = len(female_indices)
         if num_pairs == 0:
@@ -140,20 +148,25 @@ class Reproduction:
         female_idx_t = torch.tensor(female_indices, device=device, dtype=torch.long)
         male_idx_t   = torch.tensor(male_indices,   device=device, dtype=torch.long)
         # Random base number of eggs per mating (between 1 and egg_laying_max, inclusive)
-        eggs_per_pair = torch.randint(1, self.egg_laying_max + 1, (num_pairs,), device=device, dtype=torch.long)
+        eggs_per_pair = torch.randint(1, self.egg_laying_max + 1, (num_pairs,),
+                                      device=device, dtype=torch.long)
         # Adjust fecundity based on Wolbachia effects (if any)
-        if self.wolbachia_effects.get('increased_eggs', False) or self.wolbachia_effects.get('reduced_eggs', False):
-            mothers_infected = self.environment.infected[sim, female_idx_t]  # boolean mask for infected mothers
-            if self.wolbachia_effects.get('increased_eggs', False) and not self.wolbachia_effects.get('reduced_eggs', False):
-                factor = (self.environment.params.fecundity_increase_factor 
-                          if hasattr(self.environment, 'params') and self.environment.params 
+        if (self.wolbachia_effects.get('increased_eggs', False)
+                or self.wolbachia_effects.get('reduced_eggs', False)):
+            # boolean mask for infected mothers
+            mothers_infected = self.environment.infected[sim, female_idx_t]
+            if (self.wolbachia_effects.get('increased_eggs', False)
+                    and not self.wolbachia_effects.get('reduced_eggs', False)):
+                factor = (self.environment.params.fecundity_increase_factor
+                          if hasattr(self.environment, 'params') and self.environment.params
                           else 1.2)
                 eggs_per_pair[mothers_infected] = torch.round(
                     eggs_per_pair[mothers_infected].float() * factor
                 ).to(torch.long)
-            elif self.wolbachia_effects.get('reduced_eggs', False) and not self.wolbachia_effects.get('increased_eggs', False):
-                factor = (self.environment.params.fecundity_decrease_factor 
-                          if hasattr(self.environment, 'params') and self.environment.params 
+            elif (self.wolbachia_effects.get('reduced_eggs', False)
+                    and not self.wolbachia_effects.get('increased_eggs', False)):
+                factor = (self.environment.params.fecundity_decrease_factor
+                          if hasattr(self.environment, 'params') and self.environment.params
                           else 0.8)
                 eggs_per_pair[mothers_infected] = torch.round(
                     eggs_per_pair[mothers_infected].float() * factor
@@ -175,11 +188,14 @@ class Reproduction:
                         max_eggs_ci = int(eggs_per_pair[affected_idx].max().item())
                         if max_eggs_ci > 0:
                             # Random matrix to decide survival of each potential egg
-                            rand_matrix = torch.rand((affected_idx.shape[0], max_eggs_ci), device=device)
+                            rand_matrix = torch.rand(
+                                (affected_idx.shape[0], max_eggs_ci), device=device)
                             # Current egg counts for each affected pair (column vector)
                             lengths = eggs_per_pair[affected_idx].unsqueeze(1)
-                            # Mask for positions that represent actual eggs (within lengths) 
-                            valid = torch.arange(max_eggs_ci, device=device).expand(affected_idx.shape[0], max_eggs_ci) < lengths
+                            # Mask for positions that represent actual eggs (within lengths)
+                            valid = torch.arange(
+                                max_eggs_ci, device=device
+                            ).expand(affected_idx.shape[0], max_eggs_ci) < lengths
                             # An egg survives if random >= ci_strength (and position is valid)
                             survive_mask = (rand_matrix >= self.environment.ci_strength) & valid
                             survivors_count = survive_mask.sum(dim=1).to(torch.long)
@@ -191,8 +207,9 @@ class Reproduction:
         # Repeat each mother index according to how many offspring she produces
         mother_indices_for_offspring = female_idx_t.repeat_interleave(eggs_per_pair)
         # Retrieve mother attributes for each offspring
-        mother_positions = self.environment.positions[sim, mother_indices_for_offspring, :]  # shape [total_offspring, 2]
-        mother_infected = self.environment.infected[sim, mother_indices_for_offspring]       # shape [total_offspring]
+        # shapes: positions [total_offspring, 2], infected [total_offspring]
+        mother_positions = self.environment.positions[sim, mother_indices_for_offspring, :]
+        mother_infected = self.environment.infected[sim, mother_indices_for_offspring]
         # Assign random offsets (Δx, Δy in {-1,0,1}) for each offspring and apply toroidal wrap
         offsets = torch.randint(-1, 2, (total_offspring, 2), device=device, dtype=torch.long)
         new_positions_x = (mother_positions[:, 0] + offsets[:, 0].float()) % self.grid_size
@@ -204,8 +221,8 @@ class Reproduction:
         male_killing = self.wolbachia_effects.get('male_killing', False)
         if male_killing:
             base_prob = 0.5
-            male_prob = (self.environment.params.male_offspring_rate if 
-                         (hasattr(self.environment, 'params') and self.environment.params and 
+            male_prob = (self.environment.params.male_offspring_rate if
+                         (hasattr(self.environment, 'params') and self.environment.params and
                           hasattr(self.environment.params, 'male_offspring_rate')) else 0.1)
             probs = base_prob * torch.ones(total_offspring, device=device)
             probs[mother_infected] = male_prob  # infected mothers have mostly female offspring
@@ -215,7 +232,8 @@ class Reproduction:
         male_mask = rand_vals < probs
         new_sex = male_mask.to(torch.long)
         # Assign life expectancy and starting age for each offspring
-        new_life = torch.randint(280*24, 450*24, (total_offspring,), device=device, dtype=torch.long)
+        new_life = torch.randint(280*24, 450*24, (total_offspring,),
+                                 device=device, dtype=torch.long)
         new_age = torch.zeros(total_offspring, device=device, dtype=torch.long)
         # Return all offspring attributes for integration into the environment
         return {
