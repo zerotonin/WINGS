@@ -1,0 +1,20 @@
+{
+  "_comment": "Copy this file to local_paths.json (git-ignored) and fill in the real paths for each machine you run on. Keys ending in _root or _setup may use ~ and may be relative to the repo root. Delete profiles you do not use; add new ones (e.g. a second cluster) freely. See wings/config.py for the resolution order.",
+  "active_profile": "local",
+  "profiles": {
+    "local": {
+      "data_root": "<absolute path to your local results/data directory, e.g. /path/to/wings_results>",
+      "code_root": "<absolute path to your local WINGS checkout>",
+      "conda_setup": "<absolute path to etc/profile.d/conda.sh, e.g. ~/anaconda3/etc/profile.d/conda.sh>",
+      "conda_env": "wings-dev"
+    },
+    "hpc": {
+      "data_root": "<cluster project directory for results, e.g. /projects/<group>/wolbachia_spread_model>",
+      "code_root": "<cluster WINGS checkout, e.g. /home/<user>/PyProjects/WINGS>",
+      "conda_setup": "<cluster path to etc/profile.d/conda.sh, e.g. ~/miniconda3/etc/profile.d/conda.sh>",
+      "conda_env": "wings-gpu",
+      "slurm_account": "<your SLURM account>",
+      "slurm_partition": "<comma-separated GPU partitions for your cluster, e.g. on Aoraki: aoraki_gpu_L40,aoraki_gpu,aoraki_gpu_H100>"
+    }
+  }
+}
