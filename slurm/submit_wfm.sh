@@ -1,7 +1,9 @@
 #!/bin/bash
 #SBATCH --job-name=wings_fixed
-#SBATCH --account=geuba03p
-#SBATCH --partition=aoraki
+# Account + partition come from local_paths.json via load_paths.sh
+# (exported as SBATCH_ACCOUNT / SBATCH_PARTITION). Run
+#   source slurm/load_paths.sh
+# before sbatch, or override per run with: sbatch -A <acct> -p <part> ...
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
@@ -25,14 +27,27 @@
 #   python fixed_generation_sim.py --run-all --nreps 200
 # ============================================================
 
-CODE_DIR="/home/geuba03p/PyProjects/WINGS"
+# --- Machine-specific paths (see slurm/load_paths.sh) ---
+if [ -z "${WINGS_DATA_ROOT:-}" ]; then
+    _here="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd || true)"
+    if [ -f "${_here}/load_paths.sh" ]; then
+        source "${_here}/load_paths.sh"
+    elif [ -n "${WINGS_CODE_ROOT:-}" ] && [ -f "${WINGS_CODE_ROOT}/slurm/load_paths.sh" ]; then
+        source "${WINGS_CODE_ROOT}/slurm/load_paths.sh"
+    fi
+fi
+if [ -z "${WINGS_DATA_ROOT:-}" ]; then
+    echo "ERROR: WINGS paths not loaded. Run 'source slurm/load_paths.sh' before sbatch." >&2
+    exit 1
+fi
+CODE_DIR="${WINGS_CODE_ROOT}"
 SCRIPT="${CODE_DIR}/wings/models/wfm.py"
-OUTDIR="/projects/sciences/zoology/geurten_lab/wolbachia_spread_model/gpu_results_50beetles"
+OUTDIR="${WINGS_DATA_ROOT}/gpu_results_50beetles"
 NREPS=${NREPS:-200}
 
 # --- Activate environment ---
-source ~/miniconda3/etc/profile.d/conda.sh
-conda activate wings-gpu
+source "${WINGS_CONDA_SETUP}"
+conda activate "${WINGS_CONDA_ENV}"
 
 echo "============================================"
 echo "  W.I.N.G.S. Fixed-Size Model"

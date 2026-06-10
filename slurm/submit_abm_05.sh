@@ -1,7 +1,9 @@
 #!/bin/bash
 #SBATCH --job-name=wings_05
-#SBATCH --account=geuba03p
-#SBATCH --partition=aoraki_gpu_L40,aoraki_gpu,aoraki_gpu_H100
+# Account + partition come from local_paths.json via load_paths.sh
+# (exported as SBATCH_ACCOUNT / SBATCH_PARTITION). Run
+#   source slurm/load_paths.sh
+# before sbatch, or override per run with: sbatch -A <acct> -p <part> ...
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --gpus-per-task=1
@@ -49,9 +51,21 @@
 #   sbatch --export=ALL,SIMS_PER_GPU=4 submit_wings_05.sh
 # ============================================================
 
-# --- Paths ---
-PROJECT_DIR="/projects/sciences/zoology/geurten_lab/wolbachia_spread_model"
-CODE_DIR="/home/geuba03p/PyProjects/WINGS"
+# --- Machine-specific paths (see slurm/load_paths.sh) ---
+if [ -z "${WINGS_DATA_ROOT:-}" ]; then
+    _here="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd || true)"
+    if [ -f "${_here}/load_paths.sh" ]; then
+        source "${_here}/load_paths.sh"
+    elif [ -n "${WINGS_CODE_ROOT:-}" ] && [ -f "${WINGS_CODE_ROOT}/slurm/load_paths.sh" ]; then
+        source "${WINGS_CODE_ROOT}/slurm/load_paths.sh"
+    fi
+fi
+if [ -z "${WINGS_DATA_ROOT:-}" ]; then
+    echo "ERROR: WINGS paths not loaded. Run 'source slurm/load_paths.sh' before sbatch." >&2
+    exit 1
+fi
+PROJECT_DIR="${WINGS_DATA_ROOT}"
+CODE_DIR="${WINGS_CODE_ROOT}"
 SCRIPT="${CODE_DIR}/wings/models/gpu_abm.py"
 OUTDIR="${PROJECT_DIR}/abm_init05"
 
@@ -71,8 +85,8 @@ fi
 sleep 5
 
 # --- Activate environment ---
-source ~/miniconda3/etc/profile.d/conda.sh
-conda activate wings-gpu
+source "${WINGS_CONDA_SETUP}"
+conda activate "${WINGS_CONDA_ENV}"
 
 # --- Which runs does THIS array task own? ---
 # Task 0 gets runs 0–5, task 1 gets 6–11, ..., task 533 gets 3198–3199
