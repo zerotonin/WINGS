@@ -15,7 +15,7 @@ Output CSV adds: Phenotype, Infected Fraction, Replicate ID
 
 Usage:
     python ingest_delta_p.py \
-        --input-dir /projects/.../abm_delta_p \
+        --input-dir "$WINGS_DATA_ROOT/abm_delta_p" \
         --output data/combined_delta_p.csv
 """
 
