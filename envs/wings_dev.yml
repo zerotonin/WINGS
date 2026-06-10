@@ -1,0 +1,27 @@
+# Local development & testing environment (CPU-only).
+#   conda env create -f envs/wings_dev.yml
+#   conda activate wings-dev
+#   pytest            # runs the full suite, including the torch engine tests
+#   ruff check .
+
+name: wings-dev
+channels:
+  - pytorch
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.11
+  - numpy
+  - pandas
+  - matplotlib
+  - scipy
+  - tqdm
+  - seaborn
+  - pytorch
+  - cpuonly
+  - pip
+  - pip:
+      - pytest>=7.0
+      - pytest-cov
+      - ruff
+      - -e .
