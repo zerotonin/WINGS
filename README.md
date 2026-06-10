@@ -69,6 +69,43 @@ conda env create -f envs/wings_cpu.yml
 conda activate wings
 ```
 
+## Configuration (machine-specific paths) — do this first
+
+W.I.N.G.S. keeps **no absolute paths in the source tree**. Before running
+anything, create your own git-ignored `local_paths.json` from the
+committed template:
+
+```bash
+cp local_paths.template.json local_paths.json
+# then edit local_paths.json with the real paths for this machine
+```
+
+The file holds named **profiles** — typically `local` (a workstation)
+and `hpc` (a cluster such as Aoraki) — each with a `data_root` (where
+results are written), `code_root`, conda settings, and, for HPC, the
+SLURM `slurm_account` and `slurm_partition`. If the file is missing, the
+tools fall back to repo-relative defaults and print a notice telling you
+to set it up.
+
+Python resolves paths through `wings.config` (environment variable
+`WINGS_<KEY>` → `local_paths.json` → fallback). On the cluster, source
+the helper before submitting so the SLURM scripts and `sbatch` pick up
+the data/code roots, conda environment, account and partition (no
+`#SBATCH --account`/`--partition` is hard-coded):
+
+```bash
+source slurm/load_paths.sh        # uses the 'hpc' profile
+sbatch slurm/submit_abm.sh
+```
+
+Select a profile with `WINGS_PROFILE` (e.g. `WINGS_PROFILE=local`), or
+override any single value with its environment variable (e.g.
+`WINGS_DATA_ROOT=/scratch/run42`). Inspect what resolves with:
+
+```bash
+python wings/config.py --profile hpc      # human-readable dump
+```
+
 ## Quick Start
 
 ### Single simulation
