@@ -456,15 +456,20 @@ Examples:
     parser.add_argument("--nreps", type=int, default=200,
                         help="Replicates per combo in batch mode (default: 200)")
     parser.add_argument(
-        "--outdir", type=str,
-        default="/projects/sciences/zoology/geurten_lab/"
-                "wolbachia_spread_model/gpu_results_50beetles",
-        help="Output directory for batch mode",
+        "--outdir", type=str, default=None,
+        help="Output directory for batch mode "
+             "(default: <data_root>/gpu_results_50beetles from local_paths.json)",
     )
 
     args = parser.parse_args()
 
     if args.run_all:
+        if args.outdir is None:
+            try:
+                from wings.config import output_dir
+                args.outdir = str(output_dir("gpu_results_50beetles"))
+            except ImportError:
+                args.outdir = "gpu_results_50beetles"
         run_all(args)
     else:
         history = simulate(
