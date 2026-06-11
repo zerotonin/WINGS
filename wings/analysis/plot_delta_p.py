@@ -503,18 +503,21 @@ def plot_delta_p_figure(binned_df, params, outdir, dt):
 #  Overlay figure
 # ======================================================================
 
-def plot_overlay_figure(binned_df, params, outdir, dt):
+def plot_overlay_figure(binned_df, params, outdir, dt, mu=None):
     """Single-panel overlay of all three phenotypes with crossing point.
 
     Marks the frequency where CI overtakes ER as the dominant
     driver of spread ("ER → CI handoff") and shades the ER-dominant
-    and CI-dominant frequency regions.
+    and CI-dominant frequency regions.  When ``mu`` is given, the WFM
+    Turelli threshold p̂ = [1 − sqrt(1 − 4µ)]/2 is drawn for comparison
+    with the fitted crossover.
 
     Args:
         binned_df (pandas.DataFrame): Binned Δp data.
         params (dict): Fitted analytical parameters.
         outdir (str): Output directory.
         dt (int): Time interval used for Δp.
+        mu (float, optional): Maternal-transmission leakage of the sweep.
     """
     p_th = np.linspace(0.02, 0.98, 200)
 
@@ -575,6 +578,17 @@ def plot_overlay_figure(binned_df, params, outdir, dt):
             ax.text((1 + p_cross) / 2, y_label, 'CI dominant', fontsize=9,
                     ha='center', color=COL_CI, alpha=0.8, fontstyle='italic')
 
+    # WFM Turelli threshold p̂ = [1 - sqrt(1 - 4µ)]/2 (s_h = 1) for comparison
+    if mu and mu > 0:
+        disc = 1.0 - 4.0 * mu
+        if disc >= 0:
+            p_hat = (1.0 - np.sqrt(disc)) / 2.0
+            ax.axvline(p_hat, color='#333333', ls='--', lw=1.0, zorder=2)
+            ax.text(p_hat, ax.get_ylim()[1] * 0.97,
+                    rf'$\hat p$={p_hat:.3f} ($\mu$={mu:g})',
+                    rotation=90, va='top', ha='right', fontsize=8,
+                    color='#333333')
+
     ax.axhline(0, color=COL_GREY, ls=':', lw=0.7, zorder=0)
     ax.set_xlabel('Infection frequency (p)')
     ax.set_ylabel(f'Δp per {dt}-day interval')
@@ -618,6 +632,9 @@ def main():
     parser.add_argument('--gamma', type=float, default=None, help='CI right exponent')
     parser.add_argument('--s-0', type=float, default=None, help='ER base advantage')
     parser.add_argument('--beta', type=float, default=None, help='ER decay exponent')
+    parser.add_argument('--mu', type=float, default=None,
+                        help='Maternal-transmission leakage of this sweep; draws the '
+                             'WFM Turelli threshold p̂ on the overlay for comparison')
     parser.add_argument('--exclude', default=None,
                         help='Comma-separated Wolbachia mechanics to exclude. '
                              'Valid: CI, MK, ER, IE.  Phenotypes using excluded '
@@ -718,7 +735,7 @@ def main():
     # --- Plot ---
     print("\n  Generating figures (PNG + SVG)...")
     plot_delta_p_figure(binned, params, args.outdir, args.dt)
-    plot_overlay_figure(binned, params, args.outdir, args.dt)
+    plot_overlay_figure(binned, params, args.outdir, args.dt, mu=args.mu)
 
     print(f"\n  Done — figures in {args.outdir}/")
     print("=" * 56)
