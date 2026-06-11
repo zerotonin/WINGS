@@ -72,6 +72,7 @@ def simulate(
     male_offspring_rate: float = 0.1,
     fecundity_increase_factor: float = 1.2,
     er_mating_advantage: float = 1.4,
+    mu: float = 0.0,
     initial_infection_freq: float = 0.5,
 ):
     """
@@ -97,6 +98,10 @@ def simulate(
         Clutch multiplier for infected mothers when IE active.
     er_mating_advantage : float
         Mating probability ratio (infected / uninfected) when ER active.
+    mu : float
+        Maternal-transmission leakage: probability that an offspring of an
+        infected mother is born uninfected. Defaults to 0.0 (perfect
+        transmission, preserving the original behaviour).
     initial_infection_freq : float
         Starting Wolbachia frequency (0–1).
 
@@ -214,6 +219,14 @@ def simulate(
 
         # Infection: inherited from mother
         offspring_infected = np.repeat(f_inf_v, eggs_v)
+
+        # Maternal-transmission leakage: each offspring of an infected
+        # mother is born uninfected with probability mu (independent
+        # Bernoulli). Uninfected mothers are unaffected. mu = 0 reproduces
+        # the perfect-transmission recursion exactly.
+        if mu > 0.0:
+            leak = rng.random(total_offspring) < mu
+            offspring_infected = offspring_infected & ~leak
 
         # Sex determination
         if mk:
@@ -343,6 +356,7 @@ def run_all(args):
                 seed=seed,
                 ci=ci, mk=mk, er=er, ie=ie,
                 ci_strength=args.ci_strength,
+                mu=args.mu,
                 initial_infection_freq=args.initial_infection_freq,
             )
             save_csv(history, fpath)
@@ -444,6 +458,9 @@ Examples:
                         help="Clutch multiplier for IE (default: 1.2)")
     parser.add_argument("--er-mating-advantage", type=float, default=1.4,
                         help="Mating probability ratio infected/uninfected for ER (default: 1.4)")
+    parser.add_argument("--mu", type=float, default=0.0,
+                        help="Maternal-transmission leakage: P(offspring of infected "
+                             "mother is uninfected). Default 0.0 (perfect transmission)")
 
     # --- Single-run output ---
     parser.add_argument("--seed", type=int, default=42)
@@ -485,6 +502,7 @@ Examples:
             male_offspring_rate=args.male_offspring_rate,
             fecundity_increase_factor=args.fecundity_increase_factor,
             er_mating_advantage=args.er_mating_advantage,
+            mu=args.mu,
             initial_infection_freq=args.initial_infection_freq,
         )
         outpath = args.output or "result.csv"

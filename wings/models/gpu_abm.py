@@ -96,6 +96,7 @@ class SimConfig:
     # --- Reproduction parameters ---
     egg_laying_max: int = 15
     ci_strength: float = 1.0           # 0.0–1.0
+    maternal_transmission_leakage: float = 0.0  # mu: P(infected mother → uninfected egg)
     fecundity_increase_factor: float = 1.2
     fecundity_decrease_factor: float = 0.85
     male_offspring_rate: float = 0.10  # under male-killing
@@ -999,8 +1000,14 @@ class GPUSimulation:
         new_x = (pop.x[mom_for_egg] + ox) % cfg.grid_size
         new_y = (pop.y[mom_for_egg] + oy) % cfg.grid_size
 
-        # --- Infection: inherited from mother ---
+        # --- Infection: inherited from mother (with transmission leakage) ---
+        # Each offspring of an infected mother is born uninfected with
+        # probability mu (Bernoulli). mu = 0 → perfect transmission.
         new_infected = pop.infected[mom_for_egg]
+        mu = cfg.maternal_transmission_leakage
+        if mu > 0.0:
+            leak = torch.rand(total_eggs, device=self.device) < mu
+            new_infected = new_infected & ~leak
 
         # --- Sex determination ---
         if effects.get('male_killing', False):
@@ -1141,6 +1148,9 @@ if __name__ == '__main__':
     parser.add_argument('--ie', action='store_true', help='Enable increased eggs')
     parser.add_argument('--re', action='store_true', help='Enable reduced eggs')
     parser.add_argument('--ci-strength', type=float, default=1.0)
+    parser.add_argument('--mu', type=float, default=0.0,
+                        help='Maternal-transmission leakage: P(offspring of infected '
+                             'mother is uninfected). Default 0.0 (perfect transmission)')
     parser.add_argument('--mortality', choices=['none', 'logistic', 'cannibalism', 'contest'],
                         default='cannibalism',
                         help='Density-dependent mortality mode')
@@ -1164,6 +1174,7 @@ if __name__ == '__main__':
         grid_size=args.grid_size,
         infected_fraction=args.infected_fraction,
         ci_strength=args.ci_strength,
+        maternal_transmission_leakage=args.mu,
         mortality_mode=args.mortality,
         mortality_beta=args.mortality_beta,
         cannibalism_rate=args.cannibalism_rate,
@@ -1187,6 +1198,7 @@ if __name__ == '__main__':
     print(f"  Mortality:  {args.mortality} (beta={args.mortality_beta})")
     print(f"  Grid:       {args.grid_size}×{args.grid_size}")
     print(f"  Inf frac:   {args.infected_fraction}")
+    print(f"  Leakage mu: {args.mu}")
     print(f"  Days:       {args.days}")
     print(f"  Effects:    {json.dumps(cfg.wolbachia_effects)}")
     print()

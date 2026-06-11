@@ -28,7 +28,7 @@ class Environment:
                  infected_fraction=0.1, max_population=50, max_eggs=40,
                  male_to_female_ratio=0.5,
                  param_set=None, ci_strength=1.0, multiple_mating=True,
-                 use_gpu=False):
+                 use_gpu=False, maternal_transmission_leakage=0.0):
         """Initialise the simulation environment.
 
         Creates the initial population with the given infection fraction,
@@ -63,6 +63,7 @@ class Environment:
         # Initialize parameter set and reproduction settings
         self.params = param_set
         self.ci_strength = ci_strength
+        self.maternal_transmission_leakage = maternal_transmission_leakage
         self.multiple_mating = multiple_mating
         if self.params is not None:
             # If a ParameterSet is provided, override CI strength with its value

@@ -86,8 +86,14 @@ class Reproduction:
                 sex = random.choice(['male', 'female'])
             # Position offspring near the mother
             offspring_position = self.get_nearby_position(female.position)
-            # Offspring inherits mother's infection status (Wolbachia is maternally transmitted)
+            # Offspring inherits mother's infection status, with maternal-
+            # transmission leakage mu (infected mother may yield an
+            # uninfected offspring with probability mu).
             offspring_infected = female.infected
+            if offspring_infected:
+                mu = getattr(self.environment, 'maternal_transmission_leakage', 0.0)
+                if mu > 0.0 and random.random() < mu:
+                    offspring_infected = False
             # Create the Beetle (age 0 by default in Beetle.__init__)
             offspring_list.append(
                 Beetle(offspring_position, offspring_infected, sex, self.environment)
@@ -215,8 +221,13 @@ class Reproduction:
         new_positions_x = (mother_positions[:, 0] + offsets[:, 0].float()) % self.grid_size
         new_positions_y = (mother_positions[:, 1] + offsets[:, 1].float()) % self.grid_size
         new_positions = torch.stack((new_positions_x, new_positions_y), dim=1)
-        # Inherited infection status for offspring (True if mother is infected)
+        # Inherited infection status for offspring (True if mother is infected),
+        # with maternal-transmission leakage mu.
         new_infected = mother_infected.clone()
+        mu = getattr(self.environment, 'maternal_transmission_leakage', 0.0)
+        if mu > 0.0:
+            leak = torch.rand(total_offspring, device=device) < mu
+            new_infected = new_infected & ~leak
         # Determine sex for each offspring (male=1, female=0)
         male_killing = self.wolbachia_effects.get('male_killing', False)
         if male_killing:
