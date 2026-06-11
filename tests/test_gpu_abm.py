@@ -107,3 +107,12 @@ def test_run_experiment_smoke():
     sim = run_experiment(_small_config(), n_days=4, verbose=False)
     assert sim.get_population_size() > 0
     assert len(sim.population_history) == 4
+
+
+def test_full_leakage_introduces_uninfected_offspring():
+    """With mu=1.0 every offspring of an infected mother is uninfected,
+    so a fully-infected start drops below fixation once eggs hatch."""
+    cfg = _small_config(infected_fraction=1.0, maternal_transmission_leakage=1.0)
+    sim = run_experiment(cfg, n_days=50, verbose=False)
+    assert sim.get_infection_rate() < 1.0
+

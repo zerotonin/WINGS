@@ -81,6 +81,18 @@ def test_neutral_run_does_not_fix_deterministically():
     assert any(f < 0.99 for f in finals)
 
 
+def test_mu_zero_reproduces_default():
+    """mu=0.0 must reproduce the perfect-transmission recursion exactly."""
+    assert wfm.simulate(seed=7, ci=True, mu=0.0) == wfm.simulate(seed=7, ci=True)
+
+
+def test_leakage_drives_infection_down_without_ci():
+    """With no CI to sustain it, strong leakage erodes the infection."""
+    finals = [wfm.simulate(seed=s, mu=0.3, initial_infection_freq=0.5)[-1][1]
+              for s in range(12)]
+    assert np.mean(finals) < 0.4
+
+
 @pytest.mark.parametrize("freq", [0.0, 0.25, 0.75, 1.0])
 def test_initial_frequency_respected(freq):
     pop0, rate0 = wfm.simulate(seed=0, initial_infection_freq=freq)[0]
