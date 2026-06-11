@@ -45,7 +45,10 @@ fi
 PROJECT_DIR="${WINGS_DATA_ROOT}"
 CODE_DIR="${WINGS_CODE_ROOT}"
 SCRIPT="${CODE_DIR}/wings/models/gpu_abm.py"
-OUTDIR="${PROJECT_DIR}/abm_delta_p"
+
+# --- Maternal-transmission leakage (mu); each mu gets its own output dir ---
+MU=${MU:-0.0}
+OUTDIR="${PROJECT_DIR}/abm_delta_p_mu${MU}"
 MANIFEST="${OUTDIR}/.missing_manifest.txt"
 
 # --- Configuration ---
@@ -137,7 +140,7 @@ if [ -z "${SLURM_ARRAY_TASK_ID}" ]; then
 
     sbatch \
         --array=0-${ARRAY_MAX} \
-        --export=ALL,DAYS=${DAYS} \
+        --export=ALL,DAYS=${DAYS},MU=${MU} \
         "$0"
 
     echo "  Manifest written: ${MANIFEST} (${N_MISSING} entries)"
@@ -214,6 +217,7 @@ for RUN_IDX in $(seq ${RUN_START} ${RUN_END}); do
         --grid-size 500 \
         --days ${DAYS} \
         --infected-fraction ${FRAC} \
+        --mu ${MU} \
         --mortality cannibalism \
         --backend brute \
         --device cuda \
