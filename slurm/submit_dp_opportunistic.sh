@@ -15,11 +15,11 @@
 #  Usage:
 #     source slurm/load_paths.sh                 # sets SBATCH_*, WINGS_*
 #     bash slurm/submit_dp_opportunistic.sh --dry   # list what would fire
-#     bash slurm/submit_dp_opportunistic.sh         # default: mu=0.03 only
+#     bash slurm/submit_dp_opportunistic.sh         # default: mu in {0.01..0.05}
 #
-#  mu=0 is the cost-free case and is NOT re-run here — reuse the existing
-#  abm_delta_p/ sweep as the mu=0 baseline. Override with MU_LIST if you
-#  ever do need to regenerate it: MU_LIST="0.0 0.03" bash ...
+#  Default mu grid is {0.01, 0.02, 0.03, 0.04, 0.05}. mu=0 is the cost-free
+#  case and is NOT re-run — reuse the existing abm_delta_p/ sweep as the
+#  mu=0 baseline. Override the grid with MU_LIST, e.g. MU_LIST="0.03" bash ...
 #
 #  Resume gate: cells whose 200 CSVs already exist are skipped, so re-
 #  running only queues the gaps.
@@ -34,7 +34,7 @@ source "${SCRIPT_DIR}/load_paths.sh"
 : "${WINGS_DATA_ROOT:?run 'source slurm/load_paths.sh' first}"
 : "${SBATCH_PARTITION:?set slurm_partition (opportunistic list) in local_paths.json}"
 
-MU_LIST=${MU_LIST:-"0.03"}     # mu=0 reused from existing abm_delta_p/, not re-run
+MU_LIST=${MU_LIST:-"0.01 0.02 0.03 0.04 0.05"}   # mu=0 reused from abm_delta_p/, not re-run
 PHENOS=("CI" "ER" "CI_ER")
 FRACTIONS=(0.05 0.10 0.15 0.20 0.25 0.30 0.35 0.40 0.45 0.50 0.55 0.60 0.65 0.70 0.75 0.80 0.85 0.90 0.95)
 NREPS=${NREPS:-200}
