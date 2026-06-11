@@ -14,7 +14,7 @@
       "conda_setup": "<cluster path to etc/profile.d/conda.sh, e.g. ~/miniconda3/etc/profile.d/conda.sh>",
       "conda_env": "wings-gpu",
       "slurm_account": "<your SLURM account>",
-      "slurm_partition": "<comma-separated GPU partitions for your cluster, e.g. on Aoraki: aoraki_gpu_L40,aoraki_gpu,aoraki_gpu_H100>"
+      "slurm_partition": "<comma-separated GPU partitions; for opportunistic multi-partition fanout list every pool your account can use, e.g. aoraki_gpu_H100,aoraki_gpu_A100_80GB,aoraki_gpu_A100_40GB,aoraki_gpu_RTX6000,aoraki_gpu_L40,aoraki_gpu_L4_24GB,aoraki_gpu_RTX3090>"
     }
   }
 }
