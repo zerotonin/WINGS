@@ -238,6 +238,111 @@ def plot_threshold_vs_mu(mu_grid: np.ndarray, outdir: Path) -> Path:
     return stem
 
 
+# ======================================================================
+#  ABM crossover aggregation  (p* per µ vs the WFM threshold)
+# ======================================================================
+
+def crossover_from_params(params: dict, lo: float = 0.02,
+                          hi: float = 0.98) -> float:
+    """ER→CI crossover p* where the fitted CI and ER Δp curves intersect."""
+    if "A" not in params or "s_0" not in params:
+        return float("nan")
+    from wings.analysis.plot_delta_p import model_ci_asymmetric, model_er
+    p = np.linspace(lo, hi, 2000)
+    diff = (model_ci_asymmetric(p, params["A"], params["alpha"], params["gamma"])
+            - model_er(p, params["s_0"], params["beta"]))
+    idx = np.where(np.diff(np.sign(diff)))[0]
+    for i in idx:
+        if 0.02 < p[i] < 0.97:
+            return float(p[i])
+    return float("nan")
+
+
+def fitted_crossover(csv_path: str, dt: int = 24, n_bins: int = 20,
+                     ascending_only: bool = False) -> float:
+    """Fit one ABM Δp sweep CSV (via plot_delta_p) and return its p*."""
+    import pandas as pd
+
+    from wings.analysis.plot_delta_p import (
+        bin_delta_p,
+        detect_columns,
+        extract_delta_p,
+        fit_analytical,
+    )
+    df = pd.read_csv(csv_path)
+    time_col, inf_col = detect_columns(df)
+    dp = extract_delta_p(df, time_col, inf_col, dt=dt,
+                         ascending_only=ascending_only)
+    if len(dp) == 0:
+        return float("nan")
+    params = fit_analytical(bin_delta_p(dp, n_bins=n_bins))
+    return crossover_from_params(params)
+
+
+def _parse_mu_from_name(path: str) -> float | None:
+    """Extract µ from a ``..._mu0.03...`` filename, or None."""
+    import re
+    m = re.search(r"_mu([0-9]+(?:\.[0-9]+)?)", str(path))
+    return float(m.group(1)) if m else None
+
+
+def aggregate_crossovers(mu_to_csv: dict[float, str], dt: int = 24,
+                         n_bins: int = 20) -> list[dict[str, float]]:
+    """p* (ABM fit) and p̂ (WFM closed form) for each µ."""
+    return [
+        {"mu": mu, "p_star": fitted_crossover(mu_to_csv[mu], dt=dt, n_bins=n_bins),
+         "p_hat": ci_threshold_closed_form(mu)}
+        for mu in sorted(mu_to_csv)
+    ]
+
+
+def plot_pstar_vs_threshold(rows: list[dict[str, float]], outdir: Path) -> Path:
+    """fig_pstar_vs_threshold: ABM crossover p* against the WFM threshold p̂(µ)."""
+    import csv
+    mus = np.array([r["mu"] for r in rows])
+    p_star = np.array([r["p_star"] for r in rows])
+    fine = np.linspace(0.0, max(float(mus.max()), 0.05), 200)
+    closed = np.array([ci_threshold_closed_form(m) for m in fine])
+
+    fig, ax = plt.subplots(figsize=(5.6, 4.6))
+    ax.plot(fine, closed, color=_TOL_BLUE, lw=2.0, zorder=2,
+            label=r"WFM threshold $\hat p(\mu)$")
+    ax.plot(fine, fine, color=_TOL_GREY, ls=":", lw=1.0, zorder=1,
+            label=r"$\hat p=\mu$")
+    ax.scatter(mus, p_star, s=48, color=_TOL_RED, zorder=4,
+               edgecolors="white", linewidths=0.7, label=r"ABM crossover $p^*$")
+    ax.set_xlabel(r"maternal-transmission leakage $\mu$")
+    ax.set_ylabel("infection frequency")
+    ax.set_xlim(left=0)
+    ax.set_ylim(bottom=0)
+    ax.legend(loc="upper left", fontsize=8)
+    ax.set_title("ABM crossover tracks the WFM Turelli threshold",
+                 fontweight="bold", pad=10)
+    fig.tight_layout()
+    stem = outdir / "fig_pstar_vs_threshold"
+    save_fig(fig, stem)
+    with open(f"{stem}.csv", "w", newline="", encoding="utf-8") as fh:
+        w = csv.writer(fh)
+        w.writerow(["mu", "p_star_abm", "p_hat_wfm"])
+        for r in rows:
+            w.writerow([f"{r['mu']:.4f}", f"{r['p_star']:.6f}", f"{r['p_hat']:.6f}"])
+    return stem
+
+
+def append_crossover_table(results_md: Path, rows: list[dict[str, float]]) -> None:
+    """Append the p* vs p̂ comparison table to results.md."""
+    lines = ["", "## ABM crossover p* vs WFM threshold p̂", "",
+             "| µ | ABM p* | WFM p̂ | p* − p̂ |", "|---|---|---|---|"]
+    for r in rows:
+        ps = "nan" if np.isnan(r["p_star"]) else f"{r['p_star']:.4f}"
+        diff = ("nan" if np.isnan(r["p_star"])
+                else f"{r['p_star'] - r['p_hat']:+.4f}")
+        lines.append(f"| {r['mu']:.2f} | {ps} | {r['p_hat']:.4f} | {diff} |")
+    lines.append("")
+    with open(results_md, "a", encoding="utf-8") as fh:
+        fh.write("\n".join(lines))
+
+
 def build_results_md(mu_grid: np.ndarray, outdir: Path,
                      straddle: list[dict[str, float]] | None) -> Path:
     """Write results.md: thresholds per condition, invasion conditions, summary."""
@@ -327,6 +432,13 @@ def main() -> None:
                         help="Also run the finite-N WFM straddle (cheap)")
     parser.add_argument("--nreps", type=int, default=200,
                         help="Replicates for the stochastic straddle")
+    parser.add_argument("--crossover-glob", default=None,
+                        help="Glob of per-µ ABM combined CSVs (e.g. "
+                             "'data/dp_mu*.csv') → fig_pstar_vs_threshold")
+    parser.add_argument("--dt", type=int, default=24,
+                        help="Δt (days) for ABM Δp extraction (aggregator)")
+    parser.add_argument("--n-bins", type=int, default=20,
+                        help="Frequency bins for the ABM Δp fit (aggregator)")
     args = parser.parse_args()
 
     matplotlib.use("Agg")
@@ -347,11 +459,28 @@ def main() -> None:
 
     straddle = None
     if args.stochastic:
-        straddle = stochastic_straddle([0.01, 0.03, 0.05], n_reps=args.nreps)
+        straddle = stochastic_straddle([0.01, 0.02, 0.03, 0.04, 0.05],
+                                       n_reps=args.nreps)
         print(f"  ✓ stochastic straddle ({args.nreps} reps × 6 cells)")
 
     out = build_results_md(mu_grid, outdir, straddle)
     print(f"  ✓ {out.name}")
+
+    # ABM crossover aggregation (once the GPU sweep CSVs exist)
+    if args.crossover_glob:
+        import glob
+        mu_to_csv = {}
+        for fp in sorted(glob.glob(args.crossover_glob)):
+            mu = _parse_mu_from_name(fp)
+            if mu is not None:
+                mu_to_csv[mu] = fp
+        if mu_to_csv:
+            rows = aggregate_crossovers(mu_to_csv, dt=args.dt, n_bins=args.n_bins)
+            stem = plot_pstar_vs_threshold(rows, outdir)
+            append_crossover_table(out, rows)
+            print(f"  ✓ {stem.name}.{{png,svg,csv}} ({len(rows)} µ points)")
+        else:
+            print(f"  [skip] no µ-tagged CSVs matched {args.crossover_glob}")
     print("=" * 56)
 
 
