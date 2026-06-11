@@ -72,3 +72,38 @@ def test_stochastic_straddle_above_beats_below():
     below = next(r for r in recs if r["side"] == "below")
     above = next(r for r in recs if r["side"] == "above")
     assert above["frac_fixed"] >= below["frac_fixed"]
+
+
+# --- ABM crossover aggregator -----------------------------------------
+
+def test_crossover_from_params_known_point():
+    # CI Δp = p (A=1,α=1,γ=0); ER Δp = 0.05 (s0=0.05,β=0) → cross at p=0.05
+    params = {"A": 1.0, "alpha": 1.0, "gamma": 0.0, "s_0": 0.05, "beta": 0.0}
+    assert th.crossover_from_params(params) == pytest.approx(0.05, abs=2e-3)
+
+
+def test_crossover_from_params_missing_keys():
+    assert np.isnan(th.crossover_from_params({"A": 1.0}))
+
+
+def test_parse_mu_from_name():
+    assert th._parse_mu_from_name("data/dp_mu0.03.csv") == 0.03
+    assert th._parse_mu_from_name("data/dp_mu0.0.csv") == 0.0
+    assert th._parse_mu_from_name("nope.csv") is None
+
+
+def test_plot_pstar_vs_threshold(tmp_path):
+    import matplotlib
+    matplotlib.use("Agg")
+    rows = [
+        {"mu": 0.01, "p_star": 0.012, "p_hat": th.ci_threshold_closed_form(0.01)},
+        {"mu": 0.03, "p_star": 0.035, "p_hat": th.ci_threshold_closed_form(0.03)},
+        {"mu": 0.05, "p_star": float("nan"), "p_hat": th.ci_threshold_closed_form(0.05)},
+    ]
+    th.plot_pstar_vs_threshold(rows, tmp_path)
+    assert (tmp_path / "fig_pstar_vs_threshold.png").exists()
+    assert (tmp_path / "fig_pstar_vs_threshold.csv").exists()
+    md = tmp_path / "results.md"
+    md.write_text("seed\n", encoding="utf-8")
+    th.append_crossover_table(md, rows)
+    assert "ABM crossover" in md.read_text(encoding="utf-8")
