@@ -55,6 +55,7 @@ wings-ingest = "wings.analysis.ingest:main"
 wings-ingest-dp = "wings.analysis.ingest_delta_p:main"
 wings-plot = "wings.analysis.plot_wings:main"
 wings-plot-dp = "wings.analysis.plot_delta_p:main"
+wings-threshold = "wings.analysis.threshold:main"
 
 [project.urls]
 Homepage = "https://github.com/zerotonin/WINGS"
