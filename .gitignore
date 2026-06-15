@@ -35,3 +35,10 @@ Thumbs.db
 
 # Sphinx build output
 docs/_build/
+
+# Analysis outputs (regenerable from data + code; force-add a specific
+# final figure with `git add -f` if it needs versioning)
+results/
+
+# Editor lock files (LibreOffice etc.)
+.~lock.*#
