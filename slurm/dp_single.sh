@@ -8,6 +8,7 @@
 #SBATCH --job-name=wings_dp
 #SBATCH --output=logs/wings_dp_%j.out
 #SBATCH --error=logs/wings_dp_%j.err
+#SBATCH --requeue
 # ============================================================
 # W.I.N.G.S. — Δp opportunistic per-task (one mu × phenotype × fraction)
 # ============================================================
@@ -19,10 +20,13 @@
 #
 #  Injected by the submitter via --export:
 #     MU (e.g. 0.03), PHENO (CI|ER|CI_ER), FRAC (e.g. 0.10)
+#     REP_START / REP_END — contiguous replicate block (default 0..NREPS-1).
+#  The submitter chunks the 200 reps into small blocks so each job finishes
+#  inside the wall-clock; the per-rep resume gate below makes blocks compose.
 #
 #  Run one by hand:
 #     source slurm/load_paths.sh
-#     sbatch --export=ALL,MU=0.03,PHENO=CI_ER,FRAC=0.10 slurm/dp_single.sh
+#     sbatch --export=ALL,MU=0.03,PHENO=CI_ER,FRAC=0.10,REP_START=0,REP_END=39 slurm/dp_single.sh
 # ============================================================
 
 # NB: no `set -e` at the top — a single transient failure must not tank
@@ -48,6 +52,8 @@ MU=${MU:?MU must be set}
 PHENO=${PHENO:?PHENO must be set (CI|ER|CI_ER)}
 FRAC=${FRAC:?FRAC must be set}
 NREPS=${NREPS:-200}
+REP_START=${REP_START:-0}
+REP_END=${REP_END:-$((NREPS - 1))}
 SIMS_PER_GPU=${SIMS_PER_GPU:-6}
 DAYS=${DAYS:-365}
 
@@ -75,10 +81,10 @@ done
 CONDITION_ID=$((PHENO_ID * NFRAC + FRAC_ID))
 
 echo "── Job ${SLURM_JOB_ID:-local}: mu=${MU} pheno=${PHENO} frac=${FRAC} ──"
-echo "── Partition=${SLURM_JOB_PARTITION:-?}  node=$(hostname)  reps=${NREPS} ──"
+echo "── Partition=${SLURM_JOB_PARTITION:-?}  node=$(hostname)  reps=${REP_START}-${REP_END} ──"
 
 PIDS=(); LAUNCHED=0; SKIPPED=0
-for REP_ID in $(seq 0 $((NREPS - 1))); do
+for REP_ID in $(seq "${REP_START}" "${REP_END}"); do
     FNAME="${PHENO}_frac${FRAC_STR}_rep${REP_ID}.csv"
     if [ -s "${OUTDIR}/${FNAME}" ]; then
         SKIPPED=$((SKIPPED + 1)); continue
