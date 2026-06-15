@@ -25,7 +25,7 @@ source "${SCRIPT_DIR}/load_paths.sh"
 : "${SBATCH_PARTITION:?set slurm_partition (opportunistic list) in local_paths.json}"
 
 MU_LIST=${MU_LIST:-"0.01 0.02 0.03 0.04 0.05"}
-FRACTIONS=(0.005 0.010 0.015 0.020 0.025 0.030 0.035 0.040 0.045 0.050)
+FRACTIONS=(0.005 0.010 0.015 0.020 0.025 0.030 0.035 0.040 0.045 0.050 0.055 0.060)
 NREPS=${NREPS:-500}
 CHUNK_SIZE=${CHUNK_SIZE:-150}   # reps/job; 150 × ~14 s ≈ 35 min, well under the 1:30 wall
 
