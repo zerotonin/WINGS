@@ -2,24 +2,41 @@
 # ┌────────────────────────────────────────────────────────────┐
 # │ run_dp_batch  « batched low-frequency Δp runner »           │
 # └────────────────────────────────────────────────────────────┘
-"""Run a contiguous block of CI-only ABM replicates in one process.
+"""Run a contiguous block of low-frequency ABM replicates in one process.
 
-The low-frequency Turelli-threshold sweep seeds infections at p = 0.5–5 %
+The low-frequency Turelli-threshold sweep seeds infections at p = 0.5–6 %
 and only needs the *initial* Δp, so each simulation is short (~72 days).
 At that length the per-process torch/CUDA startup (~8 s) dwarfs the
 compute (~3.5 s), so launching one process per replicate wastes ~70 % of
 the wall-clock.  This wrapper imports the heavy stack **once** and loops
 the replicate range, amortising the startup across the whole block.
 
-Output filenames follow ``CI_frac{NNNN}_rep{R}.csv`` where ``NNNN`` is the
-seed fraction in per-mille (4 digits), so half-percent steps (0.005 →
-``0005``) are encodable — unlike the 0.01-resolution ``frac{NNN}`` scheme
-in :mod:`wings.analysis.ingest_delta_p`.
+A ``--condition`` selects the phenotype set under test — CI alone (the
+threshold control), ER alone, or CI+ER (the relay) — so the same wrapper
+serves the whole low-frequency panel.  Output filenames follow
+``{COND}_frac{NNNN}_rep{R}.csv`` where ``NNNN`` is the seed fraction in
+per-mille (4 digits), so half-percent steps (0.005 → ``0005``) are
+encodable — unlike the 0.01-resolution ``frac{NNN}`` scheme in
+:mod:`wings.analysis.ingest_delta_p`.  The CI seed stream and filenames are
+unchanged from the original CI-only sweep, so completed CI cells resume
+byte-for-byte.
 """
 from __future__ import annotations
 
 import argparse
 from pathlib import Path
+
+# ┌────────────────────────────────────────────────────────────┐
+# │ Phenotype conditions  « effect toggles + seed-stream offset »│
+# └────────────────────────────────────────────────────────────┘
+#  CI keeps offset 0 so its seed stream and filenames match the already-
+#  completed CI-only sweep exactly; ER/CI_ER get disjoint streams.
+CONDITION_EFFECTS: dict[str, dict[str, bool]] = {
+    "CI":    {"cytoplasmic_incompatibility": True,  "increased_exploration_rate": False},
+    "ER":    {"cytoplasmic_incompatibility": False, "increased_exploration_rate": True},
+    "CI_ER": {"cytoplasmic_incompatibility": True,  "increased_exploration_rate": True},
+}
+CONDITION_SEED_OFFSET: dict[str, int] = {"CI": 0, "ER": 1, "CI_ER": 2}
 
 
 def main() -> None:
@@ -27,8 +44,11 @@ def main() -> None:
         description="Batched CI-only low-frequency Δp replicate runner")
     parser.add_argument("--mu", type=float, required=True,
                         help="Maternal-transmission leakage")
+    parser.add_argument("--condition", choices=sorted(CONDITION_EFFECTS),
+                        default="CI",
+                        help="Phenotype set: CI (control), ER, or CI_ER (relay)")
     parser.add_argument("--frac", type=float, required=True,
-                        help="Initial infected fraction (0.005–0.05)")
+                        help="Initial infected fraction (0.005–0.06)")
     parser.add_argument("--rep-start", type=int, required=True)
     parser.add_argument("--rep-end", type=int, required=True,
                         help="Inclusive last replicate index")
@@ -50,14 +70,16 @@ def main() -> None:
 
     permille = round(args.frac * 1000)          # 0.005 → 5 → "0005"
     mu_id = round(args.mu * 1000)
+    cond_effects = CONDITION_EFFECTS[args.condition]
+    cond_offset = CONDITION_SEED_OFFSET[args.condition] * 100_000_000
     launched = skipped = 0
 
     for rep in range(args.rep_start, args.rep_end + 1):
-        out_csv = outdir / f"CI_frac{permille:04d}_rep{rep}.csv"
+        out_csv = outdir / f"{args.condition}_frac{permille:04d}_rep{rep}.csv"
         if out_csv.exists() and out_csv.stat().st_size > 0:
             skipped += 1
             continue
-        seed = args.seed_base + mu_id * 1_000_000 + permille * 1_000 + rep
+        seed = cond_offset + args.seed_base + mu_id * 1_000_000 + permille * 1_000 + rep
         cfg = SimConfig(
             initial_population=args.population,
             max_population=args.max_pop,
@@ -69,9 +91,9 @@ def main() -> None:
             device=args.device,
             seed=seed,
             wolbachia_effects={
-                "cytoplasmic_incompatibility": True,
+                "cytoplasmic_incompatibility": cond_effects["cytoplasmic_incompatibility"],
                 "male_killing": False,
-                "increased_exploration_rate": False,
+                "increased_exploration_rate": cond_effects["increased_exploration_rate"],
                 "increased_eggs": False,
                 "reduced_eggs": False,
             },
@@ -80,7 +102,8 @@ def main() -> None:
         sim.export_history_csv(str(out_csv))
         launched += 1
 
-    print(f"mu={args.mu} frac={args.frac} reps[{args.rep_start}-{args.rep_end}]: "
+    print(f"cond={args.condition} mu={args.mu} frac={args.frac} "
+          f"reps[{args.rep_start}-{args.rep_end}]: "
           f"launched={launched} skipped={skipped}")
 
 
