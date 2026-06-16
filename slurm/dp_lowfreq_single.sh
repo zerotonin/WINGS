@@ -19,7 +19,7 @@
 #  local_paths.json via load_paths.sh; nothing machine-specific here.
 #
 #  Injected by the submitter via --export:
-#     MU (e.g. 0.03), FRAC (e.g. 0.005)
+#     MU (e.g. 0.03), FRAC (e.g. 0.005), COND (CI | ER | CI_ER)
 # ============================================================
 
 # No `set -e` — a single transient sim failure must not tank the batch.
@@ -36,6 +36,7 @@ conda activate "${WINGS_CONDA_ENV}"
 
 MU=${MU:?MU must be set}
 FRAC=${FRAC:?FRAC must be set}
+COND=${COND:-CI}
 NREPS=${NREPS:-500}
 # One sim saturates the GPU (brute O(N^2) mating at N=20000), so packing
 # several per GPU only slows each one down and overruns the wall. Keep 1.
@@ -48,7 +49,7 @@ POP=${POP:-2000}
 OUTDIR="${WINGS_DATA_ROOT}/abm_dp_lowfreq_mu${MU}"
 mkdir -p "${OUTDIR}" logs
 
-echo "── Job ${SLURM_JOB_ID:-local}: mu=${MU} frac=${FRAC} reps=${REP_START}-${REP_END} days=${DAYS} pop=${POP} ──"
+echo "── Job ${SLURM_JOB_ID:-local}: cond=${COND} mu=${MU} frac=${FRAC} reps=${REP_START}-${REP_END} days=${DAYS} pop=${POP} ──"
 echo "── Partition=${SLURM_JOB_PARTITION:-?}  node=$(hostname)  procs=${SIMS_PER_GPU} ──"
 
 # Split [REP_START, REP_END] into SIMS_PER_GPU contiguous blocks.
@@ -59,13 +60,13 @@ for ((START = REP_START; START <= REP_END; START += CHUNK)); do
     END=$((START + CHUNK - 1))
     [ "${END}" -gt "${REP_END}" ] && END=${REP_END}
     python -m wings.models.run_dp_batch \
-        --mu "${MU}" --frac "${FRAC}" \
+        --mu "${MU}" --condition "${COND}" --frac "${FRAC}" \
         --rep-start "${START}" --rep-end "${END}" \
         --population "${POP}" --days "${DAYS}" \
         --outdir "${OUTDIR}" --device cuda \
-        > "${OUTDIR}/.log_${FRAC}_${START}-${END}.txt" 2>&1 &
+        > "${OUTDIR}/.log_${COND}_${FRAC}_${START}-${END}.txt" 2>&1 &
     PIDS+=($!)
 done
 wait "${PIDS[@]}"
 
-echo "── done: $(ls "${OUTDIR}"/CI_frac*_rep*.csv 2>/dev/null | wc -l) CSVs in cell dir ──"
+echo "── done: $(ls "${OUTDIR}"/${COND}_frac*_rep*.csv 2>/dev/null | wc -l) ${COND} CSVs in cell dir ──"
