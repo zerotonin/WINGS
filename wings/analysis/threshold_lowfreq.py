@@ -38,6 +38,7 @@ from matplotlib.lines import Line2D  # noqa: E402
 from matplotlib.patches import Rectangle  # noqa: E402
 from scipy.stats import mannwhitneyu  # noqa: E402
 
+from wings.analysis.plot_wings import get_style  # noqa: E402  (canonical Tol palette)
 from wings.analysis.threshold import (  # noqa: E402
     _TOL_BLUE,
     _TOL_GREY,
@@ -45,7 +46,6 @@ from wings.analysis.threshold import (  # noqa: E402
     ci_threshold_closed_form,
     save_fig,
 )
-from wings.analysis.plot_wings import get_style  # noqa: E402  (canonical Tol palette)
 
 
 def _read_endpoints(path: str) -> tuple[float | None, float | None]:
