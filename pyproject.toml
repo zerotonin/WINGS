@@ -35,6 +35,7 @@ dependencies = [
 
 [project.optional-dependencies]
 gpu = ["torch>=2.0"]
+stats = ["rerandomstats @ git+https://github.com/zerotonin/reRandomStats.git"]
 docs = [
     "sphinx>=7.0",
     "sphinx-rtd-theme>=2.0",
