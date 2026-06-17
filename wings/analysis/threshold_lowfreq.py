@@ -36,6 +36,7 @@ import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 from matplotlib.lines import Line2D  # noqa: E402
 from matplotlib.patches import Rectangle  # noqa: E402
+from scipy.stats import mannwhitneyu  # noqa: E402
 
 from wings.analysis.threshold import (  # noqa: E402
     _TOL_BLUE,
@@ -368,6 +369,129 @@ def _stars(p: float) -> str:
     return "***" if p < 1e-3 else "**" if p < 1e-2 else "*" if p < 5e-2 else "ns"
 
 
+def deltap_tests(data: dict, conds: tuple[str, str] = ("CI", "CI_ER"),
+                 combination_n: int = 5000) -> list[dict]:
+    """Per-(µ, seed) two-sample test that CI+ER Δp differs from CI Δp.
+
+    A non-parametric test on the raw replicate Δp (not the derived threshold),
+    so it tests the mechanism — does ER shift the growth rate — directly.
+    Uses the lab's reRandomStats Fisher resampling test (meanDiff, two-sided);
+    falls back to a one-sided Mann-Whitney U where reRandomStats is absent.
+    BH-FDR across every (µ, seed) cell.
+    """
+    a, b = conds
+    mus = sorted(set(data.get(a, {})) & set(data.get(b, {})))
+    try:
+        import rerandomstats as rr
+        engine = "fisher"
+    except Exception:
+        rr = None
+        engine = "mwu"
+
+    rows, pdict = [], {}
+    for mu in mus:
+        seeds = sorted(set(data[a][mu]) & set(data[b][mu]))
+        for p0 in seeds:
+            xa = np.asarray(data[a][mu][p0], float)
+            xb = np.asarray(data[b][mu][p0], float)
+            key = f"{mu:.3f}|{p0:.4f}"
+            if engine == "fisher":
+                try:
+                    p = float(rr.FisherResamplingTest(
+                        xa, xb, "meanDiff", combination_n=combination_n).main())
+                except Exception:
+                    p = 1.0
+            else:
+                try:
+                    _, p = mannwhitneyu(xb, xa, alternative="greater")
+                    p = float(p)
+                except ValueError:
+                    p = 1.0
+            pdict[key] = p
+            rows.append({"mu": mu, "p0": p0, "med_CI": float(np.median(xa)),
+                         "med_CI_ER": float(np.median(xb)), "p_raw": p,
+                         "key": key, "engine": engine})
+    if engine == "fisher":
+        bh = rr.benjamini_hochberg(pdict)["results"]
+        for r in rows:
+            r["p_bh"] = float(bh[r["key"]]["bh_adjusted_p"])
+    else:
+        for r, q in zip(rows, _bh_fdr([r["p_raw"] for r in rows])):
+            r["p_bh"] = float(q)
+    return rows
+
+
+def plot_deltap_sig(rows: list[dict], outdir: Path) -> Path:
+    """Heatmap of BH-corrected significance over the (µ, seed) grid."""
+    engine = rows[0].get("engine", "test")
+    label = ("Fisher resampling test" if engine == "fisher"
+             else "one-sided Mann-Whitney U")
+    mus = sorted({r["mu"] for r in rows})
+    seeds = sorted({r["p0"] for r in rows})
+    by_cell = {(r["mu"], r["p0"]): r for r in rows}
+    mat = np.full((len(mus), len(seeds)), np.nan)
+    for i, mu in enumerate(mus):
+        for j, p0 in enumerate(seeds):
+            r = by_cell.get((mu, p0))
+            if r is not None:
+                mat[i, j] = -np.log10(max(r["p_bh"], 1e-12))
+    fig, ax = plt.subplots(figsize=(8.4, 3.8))
+    im = ax.imshow(mat, aspect="auto", cmap="viridis", origin="lower",
+                   vmin=0, vmax=max(3.0, float(np.nanmax(mat))))
+    ax.set_xticks(range(len(seeds)))
+    ax.set_xticklabels([f"{s:.3f}" for s in seeds], rotation=45, fontsize=7)
+    ax.set_yticks(range(len(mus)))
+    ax.set_yticklabels([f"{m:.2f}" for m in mus])
+    for i, mu in enumerate(mus):
+        for j, p0 in enumerate(seeds):
+            r = by_cell.get((mu, p0))
+            if r and r["p_bh"] < 0.05:
+                ax.text(j, i, _stars(r["p_bh"]), ha="center", va="center",
+                        color="white", fontsize=6)
+    cbar = fig.colorbar(im, ax=ax)
+    cbar.set_label(r"$-\log_{10}$ BH $p$")
+    ax.set_xlabel(r"seed frequency $p_0$")
+    ax.set_ylabel(r"leakage $\mu$")
+    ax.set_title(f"CI+ER raises Δp above CI? ({label}, BH-FDR)",
+                 fontweight="bold", fontsize=10, pad=8)
+    fig.tight_layout()
+    stem = outdir / "fig_lowfreq_deltap_sig"
+    save_fig(fig, stem)
+    return stem
+
+
+def write_deltap_tests(rows: list[dict], outdir: Path) -> None:
+    engine = rows[0].get("engine", "test")
+    label = ("Fisher resampling test (meanDiff, two-sided)" if engine == "fisher"
+             else "one-sided Mann-Whitney U")
+    with open(outdir / "lowfreq_deltap_test.csv", "w", newline="",
+              encoding="utf-8") as fh:
+        w = csv.writer(fh)
+        w.writerow(["mu", "p0", "med_CI", "med_CI_ER", "engine", "p_raw", "p_bh"])
+        for r in rows:
+            w.writerow([f"{r['mu']:.3f}", f"{r['p0']:.4f}", f"{r['med_CI']:.6f}",
+                        f"{r['med_CI_ER']:.6f}", engine, f"{r['p_raw']:.4g}",
+                        f"{r['p_bh']:.4g}"])
+    mus = sorted({r["mu"] for r in rows})
+    lines = [f"# CI+ER vs CI: Δp shift ({label}, BH-FDR)", "",
+             "Per (µ, seed) test that CI+ER Δp differs from CI Δp on the raw "
+             "replicates; BH-corrected across all cells.  CI+ER median exceeds "
+             "CI median in every cell, so a significant result means CI+ER "
+             "raises the growth rate.  `BH p at p0=0.005` is the rarest seed "
+             "(invade-from-rare test).", "",
+             "| µ | sig seeds (BH<0.05) | min BH p | BH p at p0=0.005 |",
+             "|---|---|---|---|"]
+    for mu in mus:
+        cells = [r for r in rows if r["mu"] == mu]
+        nsig = sum(r["p_bh"] < 0.05 for r in cells)
+        minq = min(r["p_bh"] for r in cells)
+        rare = next((r for r in cells if abs(r["p0"] - 0.005) < 1e-9), None)
+        rare_s = "—" if rare is None else f"{rare['p_bh']:.4g} {_stars(rare['p_bh'])}"
+        lines.append(f"| {mu:.2f} | {nsig}/{len(cells)} | {minq:.4g} | {rare_s} |")
+    (outdir / "lowfreq_deltap_test.md").write_text("\n".join(lines) + "\n",
+                                                   encoding="utf-8")
+
+
 def plot_dp_curves_ci(boot: dict, outdir: Path) -> Path:
     """CI-only mean Δp(p0) per µ with a 95% CI band of the mean."""
     b = boot["CI"]
@@ -439,24 +563,76 @@ def plot_relay_ci(boot: dict, outdir: Path) -> Path:
     return stem
 
 
-def plot_threshold_box(boot: dict, rows: list[dict], outdir: Path) -> Path:
-    """Equal-aspect boxplots of bootstrapped p* for CI vs CI+ER, p* against µ.
+def deltap_pooled_tests(data: dict, conds: tuple[str, str] = ("CI", "CI_ER"),
+                        combination_n: int = 5000) -> list[dict]:
+    """Per-µ test that CI+ER Δp exceeds CI Δp, pooled across all seeds.
 
-    µ is on the x-axis (numeric), p* on the y-axis at the same scale, so the
-    p̂ ≈ µ relationship reads as the diagonal.  Whiskers are the standard
-    Tukey 1.5×IQR; outliers are drawn (coloured dots) so the mass at p*=0
-    from resamples that spread (CI at µ=0.01) stays visible — the source of
-    any ns result.
+    One p-value per µ (Fisher resampling on the mean difference, BH across µ)
+    for a clean per-µ significance mark on the threshold panel.  Falls back to
+    Mann-Whitney U where reRandomStats is absent.
     """
-    mus = [r["mu"] for r in rows]
+    a, b = conds
+    mus = sorted(set(data.get(a, {})) & set(data.get(b, {})))
+    try:
+        import rerandomstats as rr
+        engine = "fisher"
+    except Exception:
+        rr = None
+        engine = "mwu"
+    rows, pdict = [], {}
+    for mu in mus:
+        seeds = sorted(set(data[a][mu]) & set(data[b][mu]))
+        xa = np.concatenate([np.asarray(data[a][mu][p0], float) for p0 in seeds])
+        xb = np.concatenate([np.asarray(data[b][mu][p0], float) for p0 in seeds])
+        key = f"{mu:.3f}"
+        if engine == "fisher":
+            try:
+                p = float(rr.FisherResamplingTest(
+                    xa, xb, "meanDiff", combination_n=combination_n).main())
+            except Exception:
+                p = 1.0
+        else:
+            try:
+                _, p = mannwhitneyu(xb, xa, alternative="greater")
+                p = float(p)
+            except ValueError:
+                p = 1.0
+        pdict[key] = p
+        rows.append({"mu": mu, "p_raw": p, "key": key, "engine": engine})
+    if engine == "fisher":
+        bh = rr.benjamini_hochberg(pdict)["results"]
+        for r in rows:
+            r["p_bh"] = float(bh[r["key"]]["bh_adjusted_p"])
+    else:
+        for r, q in zip(rows, _bh_fdr([r["p_raw"] for r in rows])):
+            r["p_bh"] = float(q)
+    return rows
+
+
+def _fisher_by_mu(dtests: list[dict]) -> dict:
+    """Per-µ summary of the replicate Δp test: (n_sig, n_total, rarest-seed BH p)."""
+    out = {}
+    for mu in sorted({r["mu"] for r in dtests}):
+        cells = [r for r in dtests if r["mu"] == mu]
+        nsig = sum(r["p_bh"] < 0.05 for r in cells)
+        rare = next((r for r in cells if abs(r["p0"] - 0.005) < 1e-9), None)
+        out[mu] = (nsig, len(cells), rare["p_bh"] if rare else float("nan"))
+    return out
+
+
+def _draw_boxplot_ax(ax, boot: dict, thr_rows: list[dict], pmu: dict,
+                     equal_aspect: bool = True, legend: bool = True) -> None:
+    """Draw the CI vs CI+ER threshold boxplot (p* vs µ) into an axis.
+
+    Significance stars come from ``pmu`` (per-µ Fisher Δp test), so they are
+    significant even where the derived-threshold comparison is not.
+    """
+    mus = [r["mu"] for r in thr_rows]
     box_w, off = 0.0016, 0.0021
-    col_ci = get_style("CI")[0]
-    col_cier = get_style("CI+ER")[0]
-    hi = max(mus) + 0.013
-    fig, ax = plt.subplots(figsize=(5.8, 5.8))
-    ax.plot([0, hi], [0, hi], color=_TOL_GREY, ls=":", lw=1.0, zorder=0,
-            label=r"$\hat p=\mu$")
-    for r in rows:
+    col_ci, col_cier = get_style("CI")[0], get_style("CI+ER")[0]
+    hi = max(mus) + 0.014
+    ax.plot([0, hi], [0, hi], color=_TOL_GREY, ls=":", lw=1.0, zorder=0)
+    for r in thr_rows:
         mu = r["mu"]
         for cond, col, sign in (("CI", col_ci, -1), ("CI_ER", col_cier, +1)):
             arr = boot[cond][mu]["pstar_boot"]
@@ -465,37 +641,130 @@ def plot_threshold_box(boot: dict, rows: list[dict], outdir: Path) -> Path:
                 continue
             bp = ax.boxplot(arr, positions=[mu + sign * off], widths=box_w,
                             patch_artist=True, showfliers=True,
-                            flierprops=dict(marker="o", markersize=2.5,
+                            flierprops=dict(marker="o", markersize=2.0,
                                             markerfacecolor=col, alpha=0.25,
                                             markeredgecolor=col, linestyle="none"),
                             manage_ticks=False)
             for box in bp["boxes"]:
                 box.set(facecolor=col, alpha=0.6, edgecolor=col)
             for med in bp["medians"]:
-                med.set(color="black", lw=1.4)
-            for w in bp["whiskers"] + bp["caps"]:
-                w.set(color=col)
-        ax.plot(mu, ci_threshold_closed_form(mu), "D", color=_TOL_GREY,
-                ms=6, zorder=5)
+                med.set(color="black", lw=1.3)
+            for wk in bp["whiskers"] + bp["caps"]:
+                wk.set(color=col)
+        ax.plot(mu, ci_threshold_closed_form(mu), "D", color=_TOL_GREY, ms=6,
+                zorder=5)
         top = max(np.nanpercentile(boot["CI"][mu]["pstar_boot"], 97.5),
                   np.nanpercentile(boot["CI_ER"][mu]["pstar_boot"], 97.5))
         y = top + 0.0035
         ax.plot([mu - off, mu + off], [y, y], color="black", lw=0.9)
-        ax.text(mu, y, _stars(r["p_bh"]), ha="center", va="bottom", fontsize=9)
-    handles = [Rectangle((0, 0), 1, 1, fc=col_ci, alpha=0.6),
-               Rectangle((0, 0), 1, 1, fc=col_cier, alpha=0.6),
-               Line2D([0], [0], marker="D", color=_TOL_GREY, ls=""),
-               Line2D([0], [0], color=_TOL_GREY, ls=":")]
-    ax.legend(handles, ["CI", "CI+ER", "WFM p̂", r"$\hat p=\mu$"],
-              loc="upper left", fontsize=8)
+        ax.text(mu, y, _stars(pmu.get(mu, 1.0)), ha="center", va="bottom",
+                fontsize=9)
     ax.set_xticks(mus)
-    ax.set_xticklabels([f"{m:.2f}" for m in mus])
+    ax.set_xticklabels([f"{m:.2f}" for m in mus], fontsize=7)
     ax.set_xlim(0, hi)
     ax.set_ylim(0, hi)
-    ax.set_aspect("equal")
+    if equal_aspect:
+        ax.set_aspect("equal")
     ax.set_xlabel(r"maternal-transmission leakage $\mu$")
-    ax.set_ylabel(r"Turelli threshold $p^{*}$ (bootstrap)")
-    ax.set_title("CI vs CI+ER threshold (bootstrap p*; BH-corrected test)",
+    ax.set_ylabel(r"Turelli threshold $p^{*}$")
+    if legend:
+        ax.legend([Rectangle((0, 0), 1, 1, fc=col_ci, alpha=0.6),
+                   Rectangle((0, 0), 1, 1, fc=col_cier, alpha=0.6),
+                   Line2D([0], [0], marker="D", color=_TOL_GREY, ls=""),
+                   Line2D([0], [0], color=_TOL_GREY, ls=":")],
+                  ["CI", "CI+ER", "WFM p̂", r"$\hat p=\mu$"],
+                  loc="upper left", fontsize=7)
+
+
+def _draw_relay_ax(ax, boot: dict, mu: float, fmu: dict, conds: list[str],
+                   ylabel: bool = False, legend: bool = False) -> None:
+    """Draw one per-µ relay panel (median Δp + 95% CI of the median)."""
+    for cond in conds:
+        s = boot[cond].get(mu)
+        if not s:
+            continue
+        color, dash, _ = get_style(_COND_COMBO[cond])
+        ax.fill_between(s["p0"], s["median_ci_lo"], s["median_ci_hi"],
+                        color=color, alpha=0.18, lw=0, zorder=1)
+        ax.plot(s["p0"], s["median"], color=color, ls=dash,
+                marker=_COND_MARKER[cond], ms=3.0, lw=1.3, zorder=3,
+                label=_COND_LABEL[cond])
+    ax.axhline(0.0, color=_TOL_GREY, lw=0.9, zorder=0)
+    ph = ci_threshold_closed_form(mu)
+    if not np.isnan(ph):
+        ax.axvline(ph, color=_TOL_GREY, ls=":", lw=0.9)
+    nsig, ntot, rare_q = fmu.get(mu, (0, 0, float("nan")))
+    ax.text(0.96, 0.04, f"Fisher {nsig}/{ntot}\n0.5%: {_stars(rare_q)}",
+            transform=ax.transAxes, ha="right", va="bottom", fontsize=6.0)
+    if ylabel:
+        ax.set_ylabel(r"median $\Delta p$")
+    if legend:
+        ax.legend(fontsize=6.0, loc="upper left")
+    ax.set_xlabel(r"$p_0$")
+    ax.tick_params(labelsize=6.5)
+
+
+def plot_lowfreq_combined(boot: dict, thr_rows: list[dict], dtests: list[dict],
+                          pooled: list[dict], outdir: Path, layout: str = "3x2",
+                          stem: str = "fig_lowfreq_combined",
+                          figsize: tuple[float, float] | None = None) -> Path:
+    """Combined threshold boxplot + relay panels, in W×H grid ``layout``.
+
+    ``3x2`` — 3 columns × 2 rows of equal cells; the boxplot occupies one cell
+    (same size as the line plots).  ``5x2`` — 5 columns × 2 rows; the boxplot
+    spans the first two columns over both rows (a 2×2 block) and the five relay
+    panels fill columns 3–5.  Panel (a) stars are the per-µ Fisher Δp test.
+    """
+    mus = [r["mu"] for r in thr_rows]
+    fmu = _fisher_by_mu(dtests)
+    pmu = {r["mu"]: r["p_bh"] for r in pooled}
+    conds = [c for c in CONDITIONS if c in boot]
+
+    if layout == "5x2":
+        fig = plt.figure(figsize=figsize or (15.0, 6.4))
+        gs = fig.add_gridspec(2, 5, hspace=0.42, wspace=0.42)
+        ax_box = fig.add_subplot(gs[0:2, 0:2])
+        box_equal = True
+        cells = [(0, 2), (0, 3), (0, 4), (1, 2), (1, 3)]
+    else:  # "3x2": 3 cols × 2 rows, all equal cells
+        fig = plt.figure(figsize=figsize or (12.5, 7.2))
+        gs = fig.add_gridspec(2, 3, hspace=0.42, wspace=0.34)
+        ax_box = fig.add_subplot(gs[0, 0])
+        box_equal = False
+        cells = [(0, 1), (0, 2), (1, 0), (1, 1), (1, 2)]
+
+    _draw_boxplot_ax(ax_box, boot, thr_rows, pmu, equal_aspect=box_equal)
+    ax_box.set_title("(a) CI vs CI+ER threshold\n(stars: Fisher Δp test, BH)",
+                     fontweight="bold", fontsize=9)
+
+    left_col = min(c for _, c in cells)
+    for k, mu in enumerate(mus):
+        rr, cc = cells[k]
+        ax = fig.add_subplot(gs[rr, cc])
+        _draw_relay_ax(ax, boot, mu, fmu, conds,
+                       ylabel=(cc == left_col or k == 0), legend=(k == 0))
+        ax.set_title(("(b) " if k == 0 else "") + f"µ = {mu:.2f}",
+                     fontsize=9, fontweight="bold")
+
+    fig.suptitle("Low-frequency Turelli threshold: CI+ER lowers/removes it; "
+                 "ER raises Δp even at µ=0.01", fontsize=12, fontweight="bold")
+    fig.tight_layout(rect=(0, 0, 1, 0.95))
+    out = outdir / stem
+    save_fig(fig, out)
+    return out
+
+
+def plot_threshold_box(boot: dict, rows: list[dict], pooled: list[dict],
+                       outdir: Path) -> Path:
+    """Standalone equal-aspect boxplot of p* for CI vs CI+ER against µ.
+
+    As a single figure, the significance stars are the per-µ Fisher Δp test
+    (``pooled``), matching the combined figure's panel (a).
+    """
+    pmu = {r["mu"]: r["p_bh"] for r in pooled}
+    fig, ax = plt.subplots(figsize=(5.8, 5.8))
+    _draw_boxplot_ax(ax, boot, rows, pmu, equal_aspect=True, legend=True)
+    ax.set_title("CI vs CI+ER threshold (bootstrap p*; stars: Fisher Δp test, BH)",
                  fontweight="bold", pad=10)
     fig.tight_layout()
     stem = outdir / "fig_lowfreq_threshold_box"
@@ -609,15 +878,43 @@ def main() -> None:
     plot_relay(summ_by_cond, outdir)          # relay (IQR bands)
     plot_relay_ci(boot, outdir)               # relay (95% CI of median)
 
-    if "CI" in boot and "CI_ER" in boot:      # CI vs CI+ER threshold comparison
-        rows = threshold_tests(boot, args.n_boot)
-        plot_threshold_box(boot, rows, outdir)
-        write_threshold_tests(rows, outdir)
+    pooled = None
+    if "CI" in data and "CI_ER" in data:      # per-µ Fisher Δp test (panel-a stars)
+        pooled = deltap_pooled_tests(data)
+
+    thr_rows = dtests = None
+    if "CI" in boot and "CI_ER" in boot and pooled:  # threshold comparison
+        thr_rows = threshold_tests(boot, args.n_boot)
+        plot_threshold_box(boot, thr_rows, pooled, outdir)
+        write_threshold_tests(thr_rows, outdir)
         print("\n=== CI vs CI+ER threshold (bootstrap, BH-FDR) ===")
-        for r in rows:
+        for r in thr_rows:
             print(f"  µ={r['mu']:.2f}  p*_CI={r['pstar_CI']:.4f}  "
                   f"p*_CI+ER={r['pstar_CI_ER']:.4f}  "
                   f"Δ={r['delta_med']:+.4f}  p_BH={r['p_bh']:.4g} {_stars(r['p_bh'])}")
+
+    if "CI" in data and "CI_ER" in data:      # mechanism test on raw Δp
+        dtests = deltap_tests(data)
+        plot_deltap_sig(dtests, outdir)
+        write_deltap_tests(dtests, outdir)
+        eng = dtests[0].get("engine", "test")
+        print(f"\n=== CI+ER vs CI Δp shift ({eng}, BH-FDR) ===")
+        for mu in sorted({r["mu"] for r in dtests}):
+            cells = [r for r in dtests if r["mu"] == mu]
+            nsig = sum(r["p_bh"] < 0.05 for r in cells)
+            rare = next((r for r in cells if abs(r["p0"] - 0.005) < 1e-9), None)
+            rare_s = "—" if rare is None else f"{rare['p_bh']:.4g} {_stars(rare['p_bh'])}"
+            print(f"  µ={mu:.2f}  sig {nsig}/{len(cells)} seeds  "
+                  f"BH p@p0=0.005: {rare_s}")
+
+    if thr_rows and dtests and pooled:         # combined manuscript figures
+        plot_lowfreq_combined(boot, thr_rows, dtests, pooled, outdir,
+                              layout="3x2", stem="fig_lowfreq_combined")
+        plot_lowfreq_combined(boot, thr_rows, dtests, pooled, outdir,
+                              layout="5x2", stem="fig_lowfreq_combined_wide")
+        print("\n=== per-µ pooled Fisher Δp test (panel a stars) ===")
+        for r in pooled:
+            print(f"  µ={r['mu']:.2f}  p_BH={r['p_bh']:.4g} {_stars(r['p_bh'])}")
 
     write_tables(summ_by_cond, outdir)
     print(f"\nFigures + tables written to {outdir}")
