@@ -5,6 +5,7 @@
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 [![Python](https://img.shields.io/badge/python-3.9%E2%80%933.12-blue.svg)](https://www.python.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE.md)
+[![Stats: reRandomStats](https://img.shields.io/badge/stats-reRandomStats-8A2BE2.svg)](https://github.com/zerotonin/reRandomStats)
 [![DOI](https://zenodo.org/badge/719884940.svg)](https://doi.org/10.5281/zenodo.19311352)
 
 A spatially explicit agent-based model (ABM) of *Wolbachia* endosymbiont
